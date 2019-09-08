@@ -1,0 +1,3756 @@
+
+; 64tass Turbo Assembler Macro V1.54.1900 listing file
+; 64tass --m65816 --long-address --intel-hex -o ./build/liaraforth.hex --list ./build/liaraforth.lst liaraforth.asm
+; Sun Sep  8 15:23:39 2019
+
+;Offset	;Hex		;Monitor	;Source
+
+;******  Processing input file: liaraforth.asm
+
+.5000					code0
+
+;******  Processing file: macros_inc.asm
+
+
+;******  Return to file: liaraforth.asm
+
+
+;******  Processing file: definitions.asm
+
+=$0000					ram_start  = $0000		; start of installed RAM
+=32767					ram_end    = $8000-1		; end of 32k installed RAM
+=$0000					dpage      = ram_start		; direct page:       0000 - 00ff
+=256					stack      = dpage+$0100	; return stack area: 0100 - 01ff
+=512					buffer0    = stack+$0100	; buffer areas:      0200 - 02ff
+=$0000					user0      = dpage		; user and system variables
+=255					dsp0       = stack-1		; initial Data Stack Pointer:   00ff
+=511					stack0     = buffer0-1		; initial Return Stack Pointer: 01ff
+=$0080					bsize      = $0080		; size of input/output buffers
+=640					buffer1    = buffer0+bsize	; output buffer 0280 (UNUSED)
+=768					cp0        = buffer1+bsize	; Dictionary starts after last buffer
+=20479					cp_end     = code0-1		; Last RAM byte available
+=$00ff					padoffset  = $00ff		; offset from CP to PAD (holds number strings)
+=0					cp        = user0+00		; Compiler Pointer, 2 bytes
+=2					dp        = user0+02		; Dictionary Pointer, 2 bytes
+=4					workword  = user0+04		; nt (not xt) of word being compiled
+=6					insrc     = user0+06		; Input Source for SOURCE-ID
+=8					cib       = user0+08		; Address of current input buffer
+=10					ciblen    = user0+10		; Length of current input buffer
+=12					toin      = user0+12		; Pointer to CIB (>IN in Forth)
+=14					output    = user0+14		; Jump target for EMIT
+=16					input     = user0+16		; Jump target for KEY
+=18					havekey   = user0+18		; Jump target for KEY?
+=20					state     = user0+20		; STATE: -1 compile, 0 interpret
+=22					base      = user0+22		; Radix for number conversion
+=24					tohold    = user0+24		; Pointer for formatted output
+=26					tmpbranch = user0+26		; temp storage for 0BRANCH, BRANCH only
+=28					tmp1      = user0+28		; Temporary storage
+=30					tmp2      = user0+30		; Temporary storage
+=32					tmp3      = user0+32		; Temporary storage
+=34					tmpdsp    = user0+34		; Temporary DSP (X) storage, 2 bytes
+=36					tmptos    = user0+36		; Temporary TOS (Y) storage, 2 bytes
+=38					nc_limit  = user0+38		; Holds limit for Native Compile size
+=40					scratch   = user0+40		; 8 byte scratchpad (see UM/MOD)
+=$03					AscCC   = $03 		; break (Control-C) ASCII character
+=$07					AscBELL = $07 		; ACSCII bell sound
+=$08					AscBS   = $08 		; backspace ASCII character
+=$0a					AscLF   = $0a 		; line feed ASCII character
+=$0d					AscCR   = $0d 		; carriage return ASCII character
+=$0e					AscCN   = $0e 		; ASCII CNTR-n (for next command)
+=$10					AscCP   = $10 		; ASCII CNTR-p (for previous command)
+=$1b					AscESC  = $1b 		; Escape ASCII character
+=$20					AscSP   = $20 		; space ASCII character
+=$7f					AscDEL  = $7f 		; DEL ASCII character
+=$0001					CO = $0001		; Compile Only
+=$0002					AN = $0002		; Always Native Compile
+=$0004					IM = $0004		; Immediate Word
+=$0008					NN = $0008		; Never Native Compile
+
+;******  Return to file: liaraforth.asm
+
+
+;******  Processing file: kernel_go65c816.asm
+
+.5000					reset_hardware
+.5000	ea		nop		                nop
+.5001	4c 2a 50	jmp $502a	                jmp start
+.5004					put_chr
+.5004	08		php		                php
+.5005	e2 20		sep #$20	                SEP #$20        ; set A short
+.5007	8d 77 df	sta $df77	                sta $0df77
+.500a	c2 20		rep #$20	                REP #$20        ; set A long
+.500c	28		plp		                plp
+.500d	60		rts		                rts
+.500e					get_chr
+.500e	08		php		                php
+.500f	a9 00 00	lda #$0000	                lda #$0000
+.5012	e2 20		sep #$20	                SEP #$20        ; set A short
+.5014					get_chr0
+.5014	ad 75 df	lda $df75	                lda $0df75
+.5017	f0 fb		beq $5014	                beq get_chr0
+.5019	c2 20		rep #$20	                REP #$20        ; set A long
+.501b	28		plp		                plp
+.501c	60		rts		                rts
+.501d	ea		nop		have_chr        nop
+.501e	e2 20		sep #$20	                SEP #$20        ; set A short
+.5020	ad 48 df	lda $df48	                lda $0df48
+.5023	6a		ror a		                ror a
+.5024	c2 20		rep #$20	                REP #$20        ; set A long
+.5026	60		rts		                rts
+
+;******  Return to file: liaraforth.asm
+
+.5027					xt_cold
+.5027	4c 00 50	jmp $5000	                jmp reset_hardware ;  don't use JSR, jump back to start
+.502a					start
+.502a	78		sei		                sei
+.502b	a2 ff 01	ldx #$01ff	                ldx #stack0 ;  01ff
+.502e	9a		txs		                txs
+.502f	a0 00 00	ldy #$0000	                ldy #$0000
+.5032	a2 ff 00	ldx #$00ff	                ldx #dsp0
+.5035	a9 0a 00	lda #$000a	                lda #$000a
+.5038	85 16		sta $16		                sta base
+.503a	a9 14 00	lda #$0014	                lda #0020
+.503d	85 26		sta $26		                sta nc_limit
+.503f	a9 04 50	lda #$5004	                lda #put_chr
+.5042	85 0e		sta $0e		                sta output
+.5044	a9 0e 50	lda #$500e	                lda #get_chr
+.5047	85 10		sta $10		                sta input
+.5049	a9 1d 50	lda #$501d	                lda #have_chr
+.504c	85 12		sta $12		                sta havekey
+.504e	a9 00 03	lda #$0300	                lda #cp0
+.5051	85 00		sta $00		                sta cp
+.5053	a9 00 02	lda #$0200	                lda #buffer0
+.5056	85 08		sta $08		                sta cib ;  input buffer
+.5058	64 0a		stz $0a		                stz ciblen ;  input buffer starts empty
+.505a	64 06		stz $06		                stz insrc ;  SOURCE-ID is zero
+.505c	64 14		stz $14		                stz state ;  STATE is zero (interpret mode)
+.505e	a9 74 69	lda #$6974	                lda #nt_drop
+.5061	85 02		sta $02		                sta dp
+.5063	20 2c 5c	jsr $5c2c	                jsr xt_page
+.5066	ca		dex		                dex
+.5067	ca		dex		                dex
+.5068	ca		dex		                dex
+.5069	ca		dex		                dex
+.506a	a9 89 6a	lda #$6a89	                lda #hi_start
+.506d	95 00		sta $00,x	                sta $00,x		;  Start address goes in NOS
+.506f	a0 f1 06	ldy #$06f1	                ldy #hi_end-hi_start	;  length goes in TOS
+.5072	20 dd 58	jsr $58dd	                jsr xt_evaluate
+.5075					xt_abort
+.5075	c2 20		rep #$20	                REP #$20        ; set A long
+.5077	a0 00 00	ldy #$0000	                ldy #$0000
+.507a	a2 ff 00	ldx #$00ff	                ldx #dsp0
+.507d					xt_quit
+.507d	a9 ff 01	lda #$01ff	                lda #stack0
+.5080	1b		tcs		                tcs
+.5081	9c 0c 59	stz $590c	                stz execute_ip
+.5084	64 06		stz $06		                stz insrc
+.5086	64 14		stz $14		                stz state
+.5088					quit_get_line
+.5088	64 0a		stz $0a		                stz ciblen
+.508a	20 1d 5d	jsr $5d1d	                jsr xt_refill ;  ( -- f )
+.508d	98		tya		                tya ;  force flag test
+.508e	d0 06		bne $5096	                bne quit_refill_successful
+.5090	a9 34 72	lda #$7234	                lda #es_refill1
+.5093	4c 36 6a	jmp $6a36	                jmp error
+.5096					quit_refill_successful
+.5096	b4 00		ldy $00,x	                ldy $00,x ;  drop TOS
+.5098	e8		inx		                inx
+.5099	e8		inx		                inx
+.509a	64 0c		stz $0c		                stz toin
+.509c	20 b1 69	jsr $69b1	                jsr interpret
+.509f	e0 00 01	cpx #$0100	                cpx #dsp0+1
+.50a2	90 06		bcc $50aa	                bcc quit_ok ;  DSP must always be smaller (!) than DSP0
+.50a4	a9 9a 72	lda #$729a	                lda #es_underflow
+.50a7	4c 36 6a	jmp $6a36	                jmp error
+.50aa					quit_ok
+.50aa	a5 14		lda $14		                lda state
+.50ac	d0 05		bne $50b3	                bne quit_compiled
+.50ae	a9 7a 71	lda #$717a	                lda #s_ok
+.50b1	80 03		bra $50b6	                bra quit_print
+.50b3					quit_compiled
+.50b3	a9 7e 71	lda #$717e	                lda #s_compiled ;  fall through to quit_print
+.50b6					quit_print
+.50b6	20 3c 6a	jsr $6a3c	                jsr print_string
+.50b9	4c 88 50	jmp $5088	                jmp quit_get_line
+.50bc					z_cold
+.50bc					z_abort
+.50bc					z_quit
+.50bc					xt_less
+.50bc	98		tya		                tya
+.50bd	a0 00 00	ldy #$0000	                ldy #$0000 ;  default is false
+.50c0	38		sec		                sec
+.50c1	f5 00		sbc $00,x	                sbc $00,x
+.50c3	f0 08		beq $50cd	                beq less_nip ;  the same is not greater
+.50c5	50 03		bvc $50ca	                bvc less_no_ov ;  no overflow, skip ahead
+.50c7	49 00 80	eor #$8000	                eor #$8000 ;  compliment negative flag
+.50ca					less_no_ov
+.50ca	30 01		bmi $50cd	                bmi less_nip
+.50cc	88		dey		                dey
+.50cd					less_nip
+.50cd	e8		inx		                inx
+.50ce	e8		inx		                inx
+.50cf	60		rts		z_less          rts
+.50d0					xt_not_equal
+.50d0	98		tya		                tya
+.50d1	a0 00 00	ldy #$0000	                ldy #$0000 ;  default value is false
+.50d4	d5 00		cmp $00,x	                cmp $00,x
+.50d6	f0 01		beq $50d9	                beq not_equal_equal
+.50d8	88		dey		                dey ;  wraps to 0FFFF (true)
+.50d9					not_equal_equal
+.50d9	e8		inx		                inx
+.50da	e8		inx		                inx
+.50db	60		rts		z_not_equal     rts
+.50dc					xt_lessnumber
+.50dc	20 20 5c	jsr $5c20	                jsr xt_pad
+.50df	84 18		sty $18		                sty tohold
+.50e1	b4 00		ldy $00,x	                ldy $00,x
+.50e3	e8		inx		                inx
+.50e4	e8		inx		                inx
+.50e5	60		rts		z_lessnumber    rts
+.50e6					xt_greater
+.50e6	98		tya		                tya
+.50e7	a0 00 00	ldy #$0000	                ldy #$0000 ;  default is false
+.50ea	38		sec		                sec
+.50eb	f5 00		sbc $00,x	                sbc $00,x
+.50ed	f0 08		beq $50f7	                beq greater_nip ;  the same is not greater
+.50ef	50 03		bvc $50f4	                bvc greater_no_ov ;  no overflow, skip ahead
+.50f1	49 00 80	eor #$8000	                eor #$8000 ;  compliment negative flag
+.50f4					greater_no_ov
+.50f4	10 01		bpl $50f7	                bpl greater_nip
+.50f6	88		dey		                dey
+.50f7					greater_nip
+.50f7	e8		inx		                inx
+.50f8	e8		inx		                inx
+.50f9	60		rts		z_greater       rts
+.50fa					xt_tobody
+.50fa	e2 20		sep #$20	                SEP #$20        ; set A short
+.50fc	b9 00 00	lda $0000,y	                lda $0000,y ;  see if we have a JSR instruction
+.50ff	c9 20		cmp #$20	                cmp #$20
+.5101	c2 20		rep #$20	                REP #$20        ; set A long
+.5103	d0 18		bne $511d	                bne tobody_nojsr
+.5105	c8		iny		                iny
+.5106	b9 00 00	lda $0000,y	                lda $0000,y
+.5109	c9 aa 69	cmp #$69aa	                cmp #dovar
+.510c	f0 0d		beq $511b	                beq tobody_have_cfa
+.510e	c9 80 69	cmp #$6980	                cmp #doconst
+.5111	f0 08		beq $511b	                beq tobody_have_cfa
+.5113	c9 9d 69	cmp #$699d	                cmp #dodoes
+.5116	f0 03		beq $511b	                beq tobody_have_cfa
+.5118	88		dey		                dey ;  restor original xt
+.5119	80 02		bra $511d	                bra tobody_nojsr
+.511b					tobody_have_cfa
+.511b	c8		iny		                iny
+.511c	c8		iny		                iny ;  drops through to end
+.511d					tobody_nojsr
+.511d	60		rts		z_tobody        rts
+.511e					xt_to_in
+.511e	ca		dex		                dex
+.511f	ca		dex		                dex
+.5120	94 00		sty $00,x	                sty $00,x
+.5122	a0 0c 00	ldy #$000c	                ldy #toin ;  >IN
+.5125	60		rts		z_to_in         rts
+.5126					xt_tonumber
+.5126	b5 04		lda $04,x	                lda $04,x ;  ud-lo
+.5128	85 28		sta $28		                sta scratch
+.512a	b5 02		lda $02,x	                lda $02,x ;  ud-hi
+.512c	85 2a		sta $2a		                sta scratch+2
+.512e	ca		dex		                dex
+.512f	ca		dex		                dex
+.5130	94 00		sty $00,x	                sty $00,x
+.5132					tonumber_loop
+.5132	a1 02		lda ($02,x)	                lda ($02,x)
+.5134	a8		tay		                tay ;  ( ud-lo ud-hi addr u char )
+.5135	20 b2 57	jsr $57b2	                jsr xt_digitq ;  ( char -- n -1 | char 0 )
+.5138	98		tya		                tya
+.5139	d0 06		bne $5141	                bne tonumber_ok
+.513b	b4 00		ldy $00,x	                ldy $00,x
+.513d	e8		inx		                inx
+.513e	e8		inx		                inx
+.513f	80 35		bra $5176	                bra tonumber_done
+.5141					tonumber_ok
+.5141	b5 00		lda $00,x	                lda $00,x
+.5143	85 2c		sta $2c		                sta scratch+4
+.5145	a5 2a		lda $2a		                lda scratch+2
+.5147	95 00		sta $00,x	                sta $00,x
+.5149	a4 16		ldy $16		                ldy base ;  ( ud-lo ud-hi addr u ud-hi base )
+.514b	20 18 5f	jsr $5f18	                jsr xt_umstar ;  ( ud-lo ud-hi addr u ud-hi-lo ud-hi-hi )
+.514e	b5 00		lda $00,x	                lda $00,x ;  ud-hi-lo
+.5150	85 2e		sta $2e		                sta scratch+6
+.5152	a5 28		lda $28		                lda scratch
+.5154	95 00		sta $00,x	                sta $00,x ;  ( ud-lo ud-hi addr u ud-lo ud-hi-hi )
+.5156	a4 16		ldy $16		                ldy base ;  ( ud-lo ud-hi addr u ud-lo base )
+.5158	20 18 5f	jsr $5f18	                jsr xt_umstar ;  ( ud-lo ud-hi addr u ud-lo-lo ud-lo-hi )
+.515b	84 2a		sty $2a		                sty scratch+2
+.515d	b5 00		lda $00,x	                lda $00,x
+.515f	85 28		sta $28		                sta scratch
+.5161	a5 28		lda $28		                lda scratch
+.5163	18		clc		                clc
+.5164	65 2c		adc $2c		                adc scratch+4
+.5166	85 28		sta $28		                sta scratch ;  this is the new ud-lo
+.5168	a5 2a		lda $2a		                lda scratch+2
+.516a	65 2e		adc $2e		                adc scratch+6
+.516c	85 2a		sta $2a		                sta scratch+2 ;  this is the new ud-hi
+.516e	e8		inx		                inx
+.516f	e8		inx		                inx ;  ( ud-lo ud-hi addr u ud-lo-hi )
+.5170	f6 02		inc $02,x	                inc $02,x ;  increase address
+.5172	d6 00		dec $00,x	                dec $00,x ;  decrease length
+.5174	d0 bc		bne $5132	                bne tonumber_loop
+.5176					tonumber_done
+.5176	b4 00		ldy $00,x	                ldy $00,x
+.5178	e8		inx		                inx
+.5179	e8		inx		                inx ;  ( ud-lo ud-hi addr u )
+.517a	a5 28		lda $28		                lda scratch ;  new ud-lo
+.517c	95 04		sta $04,x	                sta $04,x
+.517e	a5 2a		lda $2a		                lda scratch+2
+.5180	95 02		sta $02,x	                sta $02,x ;  new ud-hi
+.5182	60		rts		z_tonumber      rts
+.5183					xt_tor
+.5183	68		pla		                pla
+.5184	5a		phy		                phy ;  the actual work
+.5185	b4 00		ldy $00,x	                ldy $00,x ;  DROP
+.5187	e8		inx		                inx
+.5188	e8		inx		                inx
+.5189	48		pha		                pha ;  put return address back in place
+.518a	60		rts		z_tor           rts
+.518b					xt_slashstring
+.518b	84 1c		sty $1c		                sty tmp1
+.518d	b5 00		lda $00,x	                lda $00,x ;  length
+.518f	38		sec		                sec
+.5190	e5 1c		sbc $1c		                sbc tmp1
+.5192	a8		tay		                tay
+.5193	b5 02		lda $02,x	                lda $02,x ;  address
+.5195	18		clc		                clc
+.5196	65 1c		adc $1c		                adc tmp1
+.5198	95 02		sta $02,x	                sta $02,x
+.519a	e8		inx		                inx
+.519b	e8		inx		                inx
+.519c	60		rts		z_slashstring   rts
+.519d					xt_dot
+.519d	20 ad 58	jsr $58ad	                jsr xt_dup ;  ( n n )
+.51a0	20 77 54	jsr $5477	                jsr xt_abs ;  ( n n )
+.51a3	20 5e 53	jsr $535e	                jsr xt_zero ;  ( n n 0 )
+.51a6	20 dc 50	jsr $50dc	                jsr xt_lessnumber ;  ( n n 0 )
+.51a9	20 79 52	jsr $5279	                jsr xt_hashs ;  ( n ud )
+.51ac	20 47 5d	jsr $5d47	                jsr xt_rot ;  ( ud n )
+.51af	20 aa 5d	jsr $5daa	                jsr xt_sign ;  ( ud )
+.51b2	20 6a 52	jsr $526a	                jsr xt_numbermore
+.51b5	20 d1 5e	jsr $5ed1	                jsr xt_type
+.51b8	20 89 5e	jsr $5e89	                jsr xt_space
+.51bb	60		rts		z_dot           rts
+.51bc					xt_dotquote
+.51bc	ca		dex		                dex
+.51bd	ca		dex		                dex
+.51be	94 00		sty $00,x	                sty $00,x
+.51c0	a0 22 00	ldy #$0022	                ldy #$0022 ;  ASCII for "
+.51c3	20 6d 5c	jsr $5c6d	                jsr xt_parse
+.51c6	20 ba 5d	jsr $5dba	                jsr xt_sliteral
+.51c9	f4 d1 5e	pea #$5ed1	                pea xt_type
+.51cc	20 15 6a	jsr $6a15	                jsr cmpl_subroutine ;  don't JSR/RTS
+.51cf	60		rts		z_dotquote      rts
+.51d0					xt_dots
+.51d0	20 27 58	jsr $5827	                jsr xt_depth ;  ( -- u)
+.51d3	a9 3c 00	lda #$003c	                lda #'<'
+.51d6	20 b7 58	jsr $58b7	                jsr emit_a
+.51d9	ca		dex		                dex ;  DUP
+.51da	ca		dex		                dex
+.51db	94 00		sty $00,x	                sty $00,x
+.51dd	20 54 6a	jsr $6a54	                jsr print_u ;  print unsigned number
+.51e0	a9 3e 00	lda #$003e	                lda #'>'
+.51e3	20 b7 58	jsr $58b7	                jsr emit_a
+.51e6	20 89 5e	jsr $5e89	                jsr xt_space
+.51e9	98		tya		                tya ;  force flag test
+.51ea	f0 18		beq $5204	                beq dots_done
+.51ec					dots_not_empty
+.51ec	a9 fb 00	lda #$00fb	                lda #dsp0-4 ;  skip two garbage entries on stack
+.51ef	85 20		sta $20		                sta tmp3 ;  use as pointer
+.51f1					dots_loop
+.51f1	b2 20		lda ($20)	                lda (tmp3) ;  LDA (TMP1)
+.51f3	5a		phy		                phy ;  save our counter
+.51f4	a8		tay		                tay
+.51f5	20 9d 51	jsr $519d	                jsr xt_dot ;  print one number, drops TOS
+.51f8	ca		dex		                dex ;  restore counter
+.51f9	ca		dex		                dex
+.51fa	94 00		sty $00,x	                sty $00,x
+.51fc	7a		ply		                ply
+.51fd	c6 20		dec $20		                dec tmp3 ;  next stack entry
+.51ff	c6 20		dec $20		                dec tmp3
+.5201	88		dey		                dey
+.5202	d0 ed		bne $51f1	                bne dots_loop
+.5204					dots_done
+.5204	20 a8 58	jsr $58a8	                jsr xt_drop
+.5207	60		rts		z_dots          rts
+.5208					xt_comma
+.5208	98		tya		                tya
+.5209	92 00		sta ($00)	                sta (cp) ;  STA (CP)
+.520b	e6 00		inc $00		                inc cp
+.520d	e6 00		inc $00		                inc cp
+.520f	b4 00		ldy $00,x	                ldy $00,x
+.5211	e8		inx		                inx
+.5212	e8		inx		                inx
+.5213	60		rts		z_comma         rts
+.5214					xt_colon
+.5214	a5 14		lda $14		                lda state
+.5216	f0 06		beq $521e	                beq +
+.5218	a9 82 72	lda #$7282	                lda #es_state
+.521b	4c 36 6a	jmp $6a36	                jmp error
+.521e					+
+.521e	e6 14		inc $14		                inc state
+.5220	a5 02		lda $02		                lda dp
+.5222	48		pha		                pha ;  CREATE uses tmp1, tmp2 and tmp3
+.5223	20 27 57	jsr $5727	                jsr xt_create
+.5226	a5 02		lda $02		                lda dp
+.5228	85 04		sta $04		                sta workword
+.522a	68		pla		                pla
+.522b	85 02		sta $02		                sta dp
+.522d	a5 00		lda $00		                lda cp
+.522f	38		sec		                sec
+.5230	e9 03 00	sbc #$0003	                sbc #$0003
+.5233	85 00		sta $00		                sta cp
+.5235	60		rts		z_colon         rts
+.5236					xt_semicolon
+.5236	84 24		sty $24		                sty tmptos
+.5238	a0 06 00	ldy #$0006	                ldy #$0006
+.523b	a5 00		lda $00		                lda cp
+.523d	91 04		sta ($04),y	                sta (workword),y ;  STA (WORKWORD),Y
+.523f	a9 60 00	lda #$0060	                lda #$60 ;  opcode for RTS
+.5242	92 00		sta ($00)	                sta (cp) ;  STA (CP)
+.5244	e6 00		inc $00		                inc cp ;  MSB will be overwritten
+.5246	a5 04		lda $04		                lda workword
+.5248	85 02		sta $02		                sta dp
+.524a	a4 24		ldy $24		                ldy tmptos
+.524c	64 14		stz $14		                stz state
+.524e	60		rts		z_semicolon     rts
+.524f					xt_hash
+.524f	20 81 55	jsr $5581	                jsr xt_base ;  ( ud addr )
+.5252	20 9d 52	jsr $529d	                jsr xt_fetch ;  ( ud u )
+.5255	20 fc 5e	jsr $5efc	                jsr xt_udmod ;  ( rem ud )
+.5258	20 47 5d	jsr $5d47	                jsr xt_rot ;  ( ud rem )
+.525b	e2 20		sep #$20	                SEP #$20        ; set A short
+.525d	b9 07 73	lda $7307,y	                lda abc_str_upper,y
+.5260	c2 20		rep #$20	                REP #$20        ; set A long
+.5262	29 ff 00	and #$00ff	                and #$00ff
+.5265	a8		tay		                tay ;  ( ud char )
+.5266	20 66 5a	jsr $5a66	                jsr xt_hold
+.5269	60		rts		z_hash          rts
+.526a					xt_numbermore
+.526a	a4 18		ldy $18		                ldy tohold
+.526c	94 00		sty $00,x	                sty $00,x ;  ( addr addr )
+.526e	20 20 5c	jsr $5c20	                jsr xt_pad ;  ( addr addr pad )
+.5271	38		sec		                sec
+.5272	98		tya		                tya
+.5273	f5 00		sbc $00,x	                sbc $00,x ;  pad - addr is the length of the string
+.5275	a8		tay		                tay ;  ( addr addr n )
+.5276	e8		inx		                inx ;  NIP
+.5277	e8		inx		                inx
+.5278	60		rts		z_numbermore    rts
+.5279					xt_hashs
+.5279					hashs_loop
+.5279	20 4f 52	jsr $524f	                jsr xt_hash ;  ( ud -- ud )
+.527c	98		tya		                tya
+.527d	15 00		ora $00,x	                ora $00,x
+.527f	d0 f8		bne $5279	                bne hashs_loop
+.5281	60		rts		z_hashs         rts
+.5282					xt_question
+.5282	20 9d 52	jsr $529d	                jsr xt_fetch
+.5285	20 9d 51	jsr $519d	                jsr xt_dot
+.5288	60		rts		z_question      rts
+.5289					xt_qdup
+.5289	98		tya		                tya
+.528a	f0 04		beq $5290	                beq z_qdup
+.528c	ca		dex		                dex
+.528d	ca		dex		                dex
+.528e	94 00		sty $00,x	                sty $00,x
+.5290	60		rts		z_qdup          rts
+.5291					xt_store
+.5291	b5 00		lda $00,x	                lda $00,x ;  NOS has value
+.5293	99 00 00	sta $0000,y	                sta $0000,y
+.5296	b4 02		ldy $02,x	                ldy $02,x
+.5298	e8		inx		                inx
+.5299	e8		inx		                inx
+.529a	e8		inx		                inx
+.529b	e8		inx		                inx
+.529c	60		rts		z_store         rts
+.529d					xt_fetch
+.529d	b9 00 00	lda $0000,y	                lda $0000,y
+.52a0	a8		tay		                tay
+.52a1	60		rts		z_fetch         rts
+.52a2					xt_pploop
+.52a2	98		tya		                tya ;  step
+.52a3	b8		clv		                clv ;  this is used for loop control
+.52a4	18		clc		                clc
+.52a5	63 01		adc $01,s	                adc $01,s ;  add index from top of R
+.52a7	83 01		sta $01,s	                sta $01,s ;  store it back on top of R
+.52a9	b4 00		ldy $00,x	                ldy $00,x
+.52ab	e8		inx		                inx
+.52ac	e8		inx		                inx
+.52ad	70 03		bvs $52b2	                bvs pploop_jmp+3
+.52af					pploop_jmp
+>52af	4c				                .byte $4C
+.52b0	60		rts		z_pploop        rts ;  never reached (TODO remove)
+.52b1					xt_pqdo
+.52b1	20 e3 53	jsr $53e3	                jsr xt_2dup
+.52b4	20 52 53	jsr $5352	                jsr xt_equal ;  now ( n1 n2 f )
+.52b7	98		tya		                tya ;  force flag check
+.52b8	f0 0a		beq $52c4	                beq pqdo_done
+.52ba	b4 04		ldy $04,x	                ldy $04,x
+.52bc	8a		txa		                txa
+.52bd	18		clc		                clc
+.52be	69 06 00	adc #$0006	                adc #$0006
+.52c1	aa		tax		                tax
+.52c2	68		pla		                pla
+.52c3	60		rts		                rts
+.52c4					pqdo_done
+.52c4	b4 00		ldy $00,x	                ldy $00,x ;  drop flag from EQUAL
+.52c6	e8		inx		                inx
+.52c7	e8		inx		                inx
+.52c8					xt_pdo
+.52c8	38		sec		                sec
+.52c9	a9 00 80	lda #$8000	                lda #$8000
+.52cc	f5 00		sbc $00,x	                sbc $00,x ;  limit is NOS
+.52ce	95 00		sta $00,x	                sta $00,x ;  save fufa for later use as NOS
+.52d0	48		pha		                pha ;  we use fufa instead of limit on R
+.52d1	18		clc		                clc
+.52d2	98		tya		                tya ;  index is TOS
+.52d3	75 00		adc $00,x	                adc $00,x ;  add fufa
+.52d5	48		pha		                pha
+.52d6	e8		inx		                inx
+.52d7	e8		inx		                inx
+.52d8	e8		inx		                inx
+.52d9	e8		inx		                inx
+.52da					z_pqdo
+.52da	60		rts		z_pdo           rts
+.52db					xt_brackettick
+.52db	20 3e 54	jsr $543e	                jsr xt_tick
+.52de	20 9a 5a	jsr $5a9a	                jsr xt_literal
+.52e1	60		rts		z_brackettick   rts
+.52e2					xt_leftbracket
+.52e2	64 14		stz $14		                stz state
+.52e4	60		rts		z_leftbracket   rts
+.52e5					xt_rightbracket
+.52e5	a9 01 00	lda #$0001	                lda #$0001
+.52e8	85 14		sta $14		                sta state
+.52ea	60		rts		z_rightbracket  rts
+.52eb					xt_bracketchar
+.52eb	20 f0 55	jsr $55f0	                jsr xt_char
+.52ee	20 9a 5a	jsr $5a9a	                jsr xt_literal
+.52f1	60		rts		z_bracketchar   rts
+.52f2					xt_backslash
+.52f2	a5 0a		lda $0a		                lda ciblen
+.52f4	85 0c		sta $0c		                sta toin
+.52f6	60		rts		z_backslash     rts
+.52f7					xt_plus
+.52f7	98		tya		                tya
+.52f8	18		clc		                clc
+.52f9	75 00		adc $00,x	                adc $00,x
+.52fb	a8		tay		                tay
+.52fc	e8		inx		                inx
+.52fd	e8		inx		                inx
+.52fe	60		rts		z_plus          rts
+.52ff					xt_loop
+.52ff	f4 b3 53	pea #$53b3	                pea xt_one
+.5302	20 15 6a	jsr $6a15	                jsr cmpl_subroutine ;  drops through to +LOOP
+.5305					xt_ploop
+.5305	ca		dex		                dex
+.5306	ca		dex		                dex
+.5307	94 00		sty $00,x	                sty $00,x
+.5309	a0 a2 52	ldy #$52a2	                ldy #xt_pploop
+.530c	20 4f 56	jsr $564f	                jsr xt_compilecomma
+.530f	20 08 52	jsr $5208	                jsr xt_comma
+.5312	ca		dex		                dex
+.5313	ca		dex		                dex
+.5314	94 00		sty $00,x	                sty $00,x
+.5316	a0 c8 5f	ldy #$5fc8	                ldy #xt_unloop
+.5319	20 4f 56	jsr $564f	                jsr xt_compilecomma
+.531c	a5 00		lda $00		                lda cp ;  we need CP-1 for RTS calculation
+.531e	3a		dec a		                dec a
+.531f	99 00 00	sta $0000,y	                sta $0000,y
+.5322	b4 00		ldy $00,x	                ldy $00,x
+.5324	e8		inx		                inx
+.5325	e8		inx		                inx
+.5326					z_loop
+.5326	60		rts		z_ploop         rts
+.5327					xt_minus
+.5327	98		tya		                tya
+.5328	49 ff ff	eor #$ffff	                eor #$0ffff
+.532b	38		sec		                sec ;  not CLC
+.532c	75 00		adc $00,x	                adc $00,x
+.532e	a8		tay		                tay
+.532f	e8		inx		                inx
+.5330	e8		inx		                inx
+.5331	60		rts		z_minus         rts
+.5332					xt_mrot
+.5332	b5 02		lda $02,x	                lda $02,x ;  save a
+.5334	94 02		sty $02,x	                sty $02,x ;  move c to 3OS
+.5336	b4 00		ldy $00,x	                ldy $00,x ;  move b to TOS
+.5338	95 00		sta $00,x	                sta $00,x ;  save a as NOS
+.533a	60		rts		z_mrot          rts
+.533b					xt_dtrailing
+.533b	98		tya		                tya ;  force flag check
+.533c	f0 13		beq $5351	                beq z_dtrailing
+.533e	b5 00		lda $00,x	                lda $00,x
+.5340	85 20		sta $20		                sta tmp3
+.5342	88		dey		                dey ;  convert length to index
+.5343	e2 20		sep #$20	                SEP #$20        ; set A short
+.5345					dtrailing_loop
+.5345	b1 20		lda ($20),y	                lda (tmp3),y
+.5347	c9 20		cmp #$20	                cmp #$20
+.5349	d0 03		bne $534e	                bne dtrailing_done
+.534b	88		dey		                dey
+.534c	10 f7		bpl $5345	                bpl dtrailing_loop ;  fall through when done
+.534e					dtrailing_done
+.534e	c2 20		rep #$20	                REP #$20        ; set A long
+.5350	c8		iny		                iny ;  convert index to length
+.5351	60		rts		z_dtrailing     rts
+.5352					xt_equal
+.5352	98		tya		                tya
+.5353	a0 00 00	ldy #$0000	                ldy #$0000 ;  default value is false
+.5356	d5 00		cmp $00,x	                cmp $00,x
+.5358	d0 01		bne $535b	                bne equal_not
+.535a	88		dey		                dey ;  wraps to 0FFFF (true)
+.535b					equal_not
+.535b	e8		inx		                inx
+.535c	e8		inx		                inx
+.535d	60		rts		z_equal         rts
+.535e					xt_zero
+.535e	ca		dex		                dex
+.535f	ca		dex		                dex
+.5360	94 00		sty $00,x	                sty $00,x
+.5362	a0 00 00	ldy #$0000	                ldy #$0000
+.5365	60		rts		z_zero          rts
+.5366					xt_zero_equal
+.5366	98		tya		                tya ;  force flag check
+.5367	d0 05		bne $536e	                bne ze_not_zero
+.5369	a0 ff ff	ldy #$ffff	                ldy #$0ffff
+.536c	80 03		bra $5371	                bra z_zero_equal
+.536e					ze_not_zero
+.536e	a0 00 00	ldy #$0000	                ldy #$0000
+.5371	60		rts		z_zero_equal    rts
+.5372					xt_zero_less
+.5372	98		tya		                tya ;  force flag check
+.5373	30 05		bmi $537a	                bmi zero_less_is_less
+.5375	a0 00 00	ldy #$0000	                ldy #$0000
+.5378	80 03		bra $537d	                bra z_zero_less
+.537a					zero_less_is_less
+.537a	a0 ff ff	ldy #$ffff	                ldy #$0ffff
+.537d	60		rts		z_zero_less     rts
+.537e					xt_zero_notequal
+.537e	98		tya		                tya ;  force flag check
+.537f	f0 05		beq $5386	                beq zne_is_zero
+.5381	a0 ff ff	ldy #$ffff	                ldy #$0ffff
+.5384	80 03		bra $5389	                bra z_zero_notequal
+.5386					zne_is_zero
+.5386	a0 00 00	ldy #$0000	                ldy #$0000
+.5389					z_zero_notequal
+.5389	60		rts		                rts
+.538a					xt_zero_more
+.538a	a9 00 00	lda #$0000	                lda #$0000 ;  default is false
+.538d	88		dey		                dey
+.538e	10 02		bpl $5392	                bpl zero_more_true ;  was at least 1
+.5390	80 01		bra $5393	                bra zero_more_done ;  nope, stays false
+.5392					zero_more_true
+.5392	3a		dec a		                dec a ;  wraps to 0ffff, true
+.5393					zero_more_done
+.5393	a8		tay		                tay
+.5394	60		rts		z_zero_more     rts
+.5395					xt_zbranch
+.5395	f4 9c 53	pea #$539c	                pea zbranch_rt
+.5398	20 15 6a	jsr $6a15	                jsr cmpl_subroutine
+.539b	60		rts		z_zbranch       rts
+.539c					zbranch_rt
+.539c	98		tya		                tya ;  force flag check
+.539d	f0 05		beq $53a4	                beq zb_zero ;  flag is false (zero), so we branch
+.539f	68		pla		                pla
+.53a0	1a		inc a		                inc a
+.53a1	1a		inc a		                inc a
+.53a2	80 09		bra $53ad	                bra zb_done
+.53a4					zb_zero
+.53a4	68		pla		                pla
+.53a5	85 1a		sta $1a		                sta tmpbranch
+.53a7	a0 01 00	ldy #$0001	                ldy #$0001
+.53aa	b1 1a		lda ($1a),y	                lda (tmpbranch),y
+.53ac	3a		dec a		                dec a
+.53ad					zb_done
+.53ad	48		pha		                pha
+.53ae	b4 00		ldy $00,x	                ldy $00,x
+.53b0	e8		inx		                inx
+.53b1	e8		inx		                inx
+.53b2	60		rts		                rts
+.53b3					xt_one
+.53b3	ca		dex		                dex
+.53b4	ca		dex		                dex
+.53b5	94 00		sty $00,x	                sty $00,x
+.53b7	a0 01 00	ldy #$0001	                ldy #$0001
+.53ba	60		rts		z_one           rts
+.53bb					xt_one_minus
+.53bb	88		dey		                dey
+.53bc	60		rts		z_one_minus     rts
+.53bd					xt_one_plus
+.53bd	c8		iny		                iny
+.53be	60		rts		z_one_plus      rts
+.53bf					xt_two
+.53bf	ca		dex		                dex
+.53c0	ca		dex		                dex
+.53c1	94 00		sty $00,x	                sty $00,x
+.53c3	a0 02 00	ldy #$0002	                ldy #$0002
+.53c6	60		rts		z_two           rts
+.53c7					xt_two_star
+.53c7	98		tya		                tya
+.53c8	0a		asl a		                asl a
+.53c9	a8		tay		                tay
+.53ca	60		rts		z_two_star      rts
+.53cb					xt_twotor
+.53cb	68		pla		                pla
+.53cc	85 20		sta $20		                sta tmp3
+.53ce	b5 00		lda $00,x	                lda $00,x ;  NOS stays next on Return Stack
+.53d0	48		pha		                pha
+.53d1	5a		phy		                phy ;  TOS stays on top
+.53d2	b4 02		ldy $02,x	                ldy $02,x ;  clean up data stack
+.53d4	e8		inx		                inx
+.53d5	e8		inx		                inx
+.53d6	e8		inx		                inx
+.53d7	e8		inx		                inx
+.53d8	a5 20		lda $20		                lda tmp3
+.53da	48		pha		                pha
+.53db	60		rts		z_twotor        rts
+.53dc					xt_2drop
+.53dc	b4 02		ldy $02,x	                ldy $02,x
+.53de	e8		inx		                inx
+.53df	e8		inx		                inx
+.53e0	e8		inx		                inx
+.53e1	e8		inx		                inx
+.53e2	60		rts		z_2drop         rts
+.53e3					xt_2dup
+.53e3	ca		dex		                dex
+.53e4	ca		dex		                dex
+.53e5	ca		dex		                dex
+.53e6	ca		dex		                dex
+.53e7	94 02		sty $02,x	                sty $02,x
+.53e9	b5 04		lda $04,x	                lda $04,x
+.53eb	95 00		sta $00,x	                sta $00,x
+.53ed	60		rts		z_2dup          rts
+.53ee					xt_2over
+.53ee	ca		dex		                dex
+.53ef	ca		dex		                dex
+.53f0	ca		dex		                dex
+.53f1	ca		dex		                dex
+.53f2	94 02		sty $02,x	                sty $02,x
+.53f4	b4 06		ldy $06,x	                ldy $06,x
+.53f6	b5 08		lda $08,x	                lda $08,x
+.53f8	95 00		sta $00,x	                sta $00,x
+.53fa	60		rts		z_2over         rts
+.53fb					xt_twofromr
+.53fb	68		pla		                pla
+.53fc	85 20		sta $20		                sta tmp3
+.53fe	ca		dex		                dex ;  make room on Data Stack
+.53ff	ca		dex		                dex
+.5400	ca		dex		                dex
+.5401	ca		dex		                dex
+.5402	94 02		sty $02,x	                sty $02,x
+.5404	7a		ply		                ply ;  top element stays on top
+.5405	68		pla		                pla ;  next element stays below
+.5406	95 00		sta $00,x	                sta $00,x
+.5408	a5 20		lda $20		                lda tmp3
+.540a	48		pha		                pha
+.540b	60		rts		z_twofromr      rts
+.540c					xt_tworfetch
+.540c	ca		dex		                dex
+.540d	ca		dex		                dex
+.540e	ca		dex		                dex
+.540f	ca		dex		                dex
+.5410	94 02		sty $02,x	                sty $02,x
+.5412	a3 03		lda $03,s	                lda $03,s ;  get second element of Return Stack
+.5414	a8		tay		                tay
+.5415	a3 05		lda $05,s	                lda $05,s ;  get third element on Return Stack
+.5417	95 00		sta $00,x	                sta $00,x
+.5419	60		rts		z_tworfetch     rts
+.541a					xt_2swap
+.541a	5a		phy		                phy ;  hi word of TOS
+.541b	b4 02		ldy $02,x	                ldy $02,x ;  hi word of NOS
+.541d	68		pla		                pla
+.541e	95 02		sta $02,x	                sta $02,x
+.5420	b5 00		lda $00,x	                lda $00,x ;  lo word of TOS
+.5422	48		pha		                pha
+.5423	b5 04		lda $04,x	                lda $04,x ;  lo word of NOS
+.5425	95 00		sta $00,x	                sta $00,x
+.5427	68		pla		                pla
+.5428	95 04		sta $04,x	                sta $04,x
+.542a	60		rts		z_2swap         rts
+.542b					xt_2variable
+.542b	20 27 57	jsr $5727	                jsr xt_create
+.542e	a9 00 00	lda #$0000	                lda #$0000
+.5431	92 00		sta ($00)	                sta (cp)
+.5433	e6 00		inc $00		                inc cp
+.5435	e6 00		inc $00		                inc cp
+.5437	92 00		sta ($00)	                sta (cp)
+.5439	e6 00		inc $00		                inc cp
+.543b	e6 00		inc $00		                inc cp
+.543d	60		rts		z_2variable     rts
+.543e					xt_tick
+.543e	20 39 5c	jsr $5c39	                jsr xt_parse_name ;  ( -- addr u )
+.5441	98		tya		                tya ;  force flag check
+.5442	d0 06		bne $544a	                bne tick_have_word
+.5444	a9 0d 72	lda #$720d	                lda #es_noname
+.5447	4c 36 6a	jmp $6a36	                jmp error
+.544a					tick_have_word
+.544a	20 4a 59	jsr $594a	                jsr xt_find_name ;  ( addr u -- nt)
+.544d	98		tya		                tya ;  force flag check
+.544e	d0 06		bne $5456	                bne tick_have_nt
+.5450	a9 aa 72	lda #$72aa	                lda #es_syntax
+.5453	4c 36 6a	jmp $6a36	                jmp error
+.5456					tick_have_nt
+.5456	20 51 5b	jsr $5b51	                jsr xt_name_int ;  ( nt -- xt )
+.5459	60		rts		z_tick          rts
+.545a					xt_abortq
+.545a	20 64 5d	jsr $5d64	                jsr xt_squote ;  save string
+.545d	f4 64 54	pea #$5464	                pea abortq_rt ;  compile run-time aspect
+.5460	20 15 6a	jsr $6a15	                jsr cmpl_subroutine
+.5463	60		rts		                rts
+.5464					abortq_rt
+.5464	b5 02		lda $02,x	                lda $02,x ;  get flag as 3OS
+.5466	f0 06		beq $546e	                beq abortq_done ;  if FALSE, we're done
+.5468	20 d1 5e	jsr $5ed1	                jsr xt_type
+.546b	4c 75 50	jmp $5075	                jmp xt_abort ;  not JSR because we never come back
+.546e					abortq_done
+.546e	b4 04		ldy $04,x	                ldy $04,x ;  fourth on the stack
+.5470	8a		txa		                txa
+.5471	18		clc		                clc
+.5472	69 06 00	adc #$0006	                adc #$0006
+.5475	aa		tax		                tax
+.5476	60		rts		z_abortq        rts
+.5477					xt_abs
+.5477	98		tya		                tya ;  force flag test
+.5478	10 05		bpl $547f	                bpl z_abs ;  positive number is easy
+.547a	49 ff ff	eor #$ffff	                eor #$0ffff
+.547d	1a		inc a		                inc a
+.547e	a8		tay		                tay
+.547f	60		rts		z_abs           rts
+.5480					xt_accept
+.5480	98		tya		                tya ;  force flag test
+.5481	d0 05		bne $5488	                bne accept_nonzero
+.5483	e8		inx		                inx ;  NIP, TOS is zero which is also FALSE
+.5484	e8		inx		                inx
+.5485	4c 0e 55	jmp $550e	                jmp z_accept ;  no RTS so we can native compile
+.5488					accept_nonzero
+.5488	b5 00		lda $00,x	                lda $00,x ;  address of buffer is NOS
+.548a	85 1c		sta $1c		                sta tmp1
+.548c	e8		inx		                inx ;  NIP
+.548d	e8		inx		                inx
+.548e	84 1e		sty $1e		                sty tmp2 ;  Save max number of chars in tmp2
+.5490	a0 00 00	ldy #$0000	                ldy #$0000 ;  Use Y as counter
+.5493					accept_loop
+.5493	8e 22 00	stx $0022	                stx @w tmpdsp    ; tinkerer's put 8e here, tass - 86, now i want exact binaries
+.5496	a2 00 00	ldx #$0000	                ldx #$0000
+.5499	fc 10 00	jsr ($0010,x)	                jsr (input,x) ;  JSR (INPUT,X)
+.549c	a6 22		ldx $22		                ldx tmpdsp
+.549e	c9 0a 00	cmp #$000a	                cmp #AscLF
+.54a1	f0 43		beq $54e6	                beq accept_eol
+.54a3	c9 0d 00	cmp #$000d	                cmp #AscCR
+.54a6	f0 3e		beq $54e6	                beq accept_eol
+.54a8	c9 08 00	cmp #$0008	                cmp #AscBS
+.54ab	f0 40		beq $54ed	                beq accept_bs
+.54ad	c9 7f 00	cmp #$007f	                cmp #AscDEL
+.54b0	f0 3b		beq $54ed	                beq accept_bs
+.54b2	c9 03 00	cmp #$0003	                cmp #AscCC
+.54b5	d0 03		bne $54ba	                bne +
+.54b7	4c 75 50	jmp $5075	                jmp xt_abort
+.54ba					+
+.54ba	c9 1b 00	cmp #$001b	                cmp #AscESC
+.54bd	d0 03		bne $54c2	                bne +
+.54bf	4c 75 50	jmp $5075	                jmp xt_abort
+.54c2					+
+.54c2	c9 10 00	cmp #$0010	                cmp #AscCP
+.54c5	d0 08		bne $54cf	                bne +
+.54c7	a9 c2 72	lda #$72c2	                lda #tests_prev_cmd
+.54ca	20 3c 6a	jsr $6a3c	                jsr print_string
+.54cd	80 c4		bra $5493	                bra accept_loop
+.54cf					+
+.54cf	c9 0e 00	cmp #$000e	                cmp #AscCN
+.54d2	d0 08		bne $54dc	                bne +
+.54d4	a9 d5 72	lda #$72d5	                lda #tests_next_cmd
+.54d7	20 3c 6a	jsr $6a3c	                jsr print_string
+.54da	80 b7		bra $5493	                bra accept_loop
+.54dc					+
+.54dc	20 b7 58	jsr $58b7	                jsr emit_a
+.54df	91 08		sta ($08),y	                sta (cib),y ;  STA (CIB),Y
+.54e1	c8		iny		                iny
+.54e2	c4 1e		cpy $1e		                cpy tmp2 ;  reached character limit?
+.54e4	d0 ad		bne $5493	                bne accept_loop ;  fall thru if buffer limit reached
+.54e6					accept_eol
+.54e6	84 0a		sty $0a		                sty ciblen ;  Y contains number of chars accepted already
+.54e8	20 89 5e	jsr $5e89	                jsr xt_space ;  print final space
+.54eb	80 21		bra $550e	                bra z_accept
+.54ed					accept_bs
+.54ed	c0 00 00	cpy #$0000	                cpy #$0000 ;  buffer empty?
+.54f0	d0 07		bne $54f9	                bne +
+.54f2	a9 07 00	lda #$0007	                lda #AscBELL ;  complain and don't delete beyond the start of line
+.54f5	20 b7 58	jsr $58b7	                jsr emit_a
+.54f8	c8		iny		                iny
+.54f9					+
+.54f9	88		dey		                dey
+.54fa	a9 08 00	lda #$0008	                lda #AscBS ;  move back one
+.54fd	20 b7 58	jsr $58b7	                jsr emit_a
+.5500	a9 20 00	lda #$0020	                lda #AscSP ;  print a space (rubout)
+.5503	20 b7 58	jsr $58b7	                jsr emit_a
+.5506	a9 08 00	lda #$0008	                lda #AscBS ;  move back over space
+.5509	20 b7 58	jsr $58b7	                jsr emit_a
+.550c	80 85		bra $5493	                bra accept_loop
+.550e	60		rts		z_accept        rts
+.550f					xt_again
+.550f	e2 20		sep #$20	                SEP #$20        ; set A short
+.5511	a9 4c		lda #$4c	                lda #$4c
+.5513	92 00		sta ($00)	                sta (cp) ;  STA (CP)
+.5515	c2 20		rep #$20	                REP #$20        ; set A long
+.5517	e6 00		inc $00		                inc cp
+.5519	98		tya		                tya
+.551a	92 00		sta ($00)	                sta (cp)
+.551c	e6 00		inc $00		                inc cp
+.551e	e6 00		inc $00		                inc cp
+.5520	b4 00		ldy $00,x	                ldy $00,x
+.5522	e8		inx		                inx
+.5523	e8		inx		                inx
+.5524	60		rts		z_again         rts
+.5525					xt_align
+.5525	ea		nop		                nop ;  removed during native compile
+.5526	60		rts		z_align         rts
+.5527					xt_aligned
+.5527	ea		nop		                nop ;  removed during native compile
+.5528	60		rts		z_aligned       rts
+.5529					xt_allot
+.5529	98		tya		                tya ;  force flag check
+.552a	f0 21		beq $554d	                beq allot_real_gone ;  zero bytes, don't do anything
+.552c	30 12		bmi $5540	                bmi allot_minus ;  free memory instead of reserving it
+.552e	18		clc		                clc
+.552f	65 00		adc $00		                adc cp ;  create new CP
+.5531	b0 07		bcs $553a	                bcs allot_error ;  oops, we've wrapped
+.5533	a8		tay		                tay ;  save copy of new CP
+.5534	38		sec		                sec
+.5535	e9 ff 4f	sbc #$4fff	                sbc #cp_end
+.5538	30 11		bmi $554b	                bmi allot_done ;  oops, fall thru if beyond max RAM
+.553a					allot_error
+.553a	a9 88 71	lda #$7188	                lda #es_allot
+.553d	4c 36 6a	jmp $6a36	                jmp error
+.5540					allot_minus
+.5540	38		sec		                sec
+.5541	e5 00		sbc $00		                sbc cp
+.5543	90 f5		bcc $553a	                bcc allot_error ;  oops, we've wrapped
+.5545	a8		tay		                tay
+.5546	e9 00 03	sbc #$0300	                sbc #cp0 ;  Carry Flag must still be set
+.5549	30 ef		bmi $553a	                bmi allot_error ;  oops, gone too far back
+.554b					allot_done
+.554b	84 00		sty $00		                sty cp ;  new compiler pointer
+.554d					allot_real_gone
+.554d	b4 00		ldy $00,x	                ldy $00,x ;  DROP
+.554f	e8		inx		                inx
+.5550	e8		inx		                inx
+.5551	60		rts		z_allot         rts
+.5552					xt_and
+.5552	98		tya		                tya
+.5553	35 00		and $00,x	                and $00,x
+.5555	a8		tay		                tay
+.5556	e8		inx		                inx ;  NIP
+.5557	e8		inx		                inx
+.5558	60		rts		z_and           rts
+.5559					xt_at_xy
+.5559	a9 1b 00	lda #$001b	                lda #AscESC ;  ESC
+.555c	20 b7 58	jsr $58b7	                jsr emit_a
+.555f	a9 5b 00	lda #$005b	                lda #$5b ;  [
+.5562	20 b7 58	jsr $58b7	                jsr emit_a
+.5565	b5 00		lda $00,x	                lda $00,x ;  x
+.5567	20 6e 6a	jsr $6a6e	                jsr byte_to_ascii
+.556a	a9 3b 00	lda #$003b	                lda #$3b ;  semicolon
+.556d	20 b7 58	jsr $58b7	                jsr emit_a
+.5570	98		tya		                tya ;  y
+.5571	20 6e 6a	jsr $6a6e	                jsr byte_to_ascii
+.5574	a9 48 00	lda #$0048	                lda #$48 ;  H
+.5577	20 b7 58	jsr $58b7	                jsr emit_a
+.557a	b4 02		ldy $02,x	                ldy $02,x
+.557c	e8		inx		                inx
+.557d	e8		inx		                inx
+.557e	e8		inx		                inx
+.557f	e8		inx		                inx
+.5580	60		rts		z_at_xy         rts
+.5581					xt_base
+.5581	ca		dex		                dex
+.5582	ca		dex		                dex
+.5583	94 00		sty $00,x	                sty $00,x
+.5585	a0 16 00	ldy #$0016	                ldy #base
+.5588	60		rts		z_base          rts
+.5589					xt_bell
+.5589	a9 07 00	lda #$0007	                lda #AscBELL
+.558c	20 b7 58	jsr $58b7	                jsr emit_a
+.558f	60		rts		z_bell          rts
+.5590					xt_begin
+.5590	ca		dex		                dex
+.5591	ca		dex		                dex
+.5592	94 00		sty $00,x	                sty $00,x
+.5594	a4 00		ldy $00		                ldy cp
+.5596	60		rts		z_begin         rts
+.5597					xt_bl
+.5597	ca		dex		                dex
+.5598	ca		dex		                dex
+.5599	94 00		sty $00,x	                sty $00,x
+.559b	a0 20 00	ldy #$0020	                ldy #AscSP
+.559e	60		rts		z_bl            rts
+.559f					xt_bounds
+.559f	98		tya		                tya ;  TOS
+.55a0	18		clc		                clc
+.55a1	75 00		adc $00,x	                adc $00,x ;  NOS
+.55a3	b4 00		ldy $00,x	                ldy $00,x
+.55a5	95 00		sta $00,x	                sta $00,x
+.55a7	60		rts		z_bounds        rts
+.55a8					xt_branch
+.55a8	f4 af 55	pea #$55af	                pea branch_rt
+.55ab	20 15 6a	jsr $6a15	                jsr cmpl_subroutine
+.55ae	60		rts		z_branch        rts
+.55af					branch_rt
+.55af	68		pla		                pla
+.55b0	85 1a		sta $1a		                sta tmpbranch
+.55b2	5a		phy		                phy ;  avoid using temp variables
+.55b3	a0 01 00	ldy #$0001	                ldy #$0001
+.55b6	b1 1a		lda ($1a),y	                lda (tmpbranch),y ;  LDA (TMPBRANCH),Y
+.55b8	7a		ply		                ply
+.55b9	3a		dec a		                dec a
+.55ba	48		pha		                pha ;  put target address back on Return Stack
+.55bb	60		rts		                rts
+.55bc					xt_bye
+.55bc	78		sei		                sei
+.55bd	d8		cld		                cld
+.55be	ea		nop		                nop ; sec in original - back to emulated
+.55bf	ea		nop		                nop ; xce in original
+.55c0	6c fc ff	jmp ($fffc)	                jmp ($0fffc)
+.55c3					z_bye
+.55c3					xt_c_comma
+.55c3	98		tya		                tya
+.55c4	e2 20		sep #$20	                SEP #$20        ; set A short
+.55c6	92 00		sta ($00)	                sta (cp) ;  STA (CP)
+.55c8	c2 20		rep #$20	                REP #$20        ; set A long
+.55ca	e6 00		inc $00		                inc cp ;  quick version of 1 ALLOT
+.55cc	b4 00		ldy $00,x	                ldy $00,x
+.55ce	e8		inx		                inx
+.55cf	e8		inx		                inx
+.55d0	60		rts		z_c_comma       rts
+.55d1					xt_c_fetch
+.55d1	e2 20		sep #$20	                SEP #$20        ; set A short
+.55d3	b9 00 00	lda $0000,y	                lda $0000,y
+.55d6	c2 20		rep #$20	                REP #$20        ; set A long
+.55d8	29 ff 00	and #$00ff	                and #$00ff
+.55db	a8		tay		                tay
+.55dc	60		rts		z_c_fetch       rts
+.55dd					xt_c_store
+.55dd	b5 00		lda $00,x	                lda $00,x
+.55df	e2 20		sep #$20	                SEP #$20        ; set A short
+.55e1	99 00 00	sta $0000,y	                sta $0000,y
+.55e4	c2 20		rep #$20	                REP #$20        ; set A long
+.55e6	b4 02		ldy $02,x	                ldy $02,x
+.55e8	e8		inx		                inx
+.55e9	e8		inx		                inx
+.55ea	e8		inx		                inx
+.55eb	e8		inx		                inx
+.55ec	60		rts		z_c_store       rts
+.55ed					xt_cellplus
+.55ed	c8		iny		                iny
+.55ee	c8		iny		                iny
+.55ef	60		rts		z_cellplus      rts
+.55f0					xt_char
+.55f0	20 39 5c	jsr $5c39	                jsr xt_parse_name ;  ( -- addr u )
+.55f3	98		tya		                tya ;  force flag check
+.55f4	d0 06		bne $55fc	                bne char_got_char
+.55f6	a9 0d 72	lda #$720d	                lda #es_noname
+.55f9	4c 36 6a	jmp $6a36	                jmp error
+.55fc					char_got_char
+.55fc	b4 00		ldy $00,x	                ldy $00,x ;  get addr from NOS
+.55fe	b9 00 00	lda $0000,y	                lda $0000,y ;  LDA 0000,Y - could be C@
+.5601	29 ff 00	and #$00ff	                and #$00ff
+.5604	a8		tay		                tay
+.5605	e8		inx		                inx
+.5606	e8		inx		                inx
+.5607	60		rts		z_char          rts
+.5608					xt_chars
+.5608	ea		nop		                nop ;  will be removed during native compile
+.5609	60		rts		z_chars         rts
+.560a					xt_cmove
+.560a	98		tya		                tya
+.560b	18		clc		                clc
+.560c	75 02		adc $02,x	                adc $02,x ;  source, goes in X
+.560e	3a		dec a		                dec a ;  convert length to index
+.560f	95 02		sta $02,x	                sta $02,x
+.5611	98		tya		                tya
+.5612	18		clc		                clc
+.5613	75 00		adc $00,x	                adc $00,x ;  destination, goes in Y
+.5615	3a		dec a		                dec a ;  convert length to index
+.5616	86 22		stx $22		                stx tmpdsp ;  keep DSP safe
+.5618	88		dey		                dey
+.5619	5a		phy		                phy ;  save number of bytes to transfer
+.561a	a8		tay		                tay ;  destination now in Y
+.561b	b5 02		lda $02,x	                lda $02,x ;  get source address
+.561d	aa		tax		                tax
+.561e	68		pla		                pla ;  retrieve number of bytes to transfer
+.561f	44 00 00	mvp $00,$00	                mvp 0,0
+.5622	a6 22		ldx $22		                ldx tmpdsp
+.5624	b4 04		ldy $04,x	                ldy $04,x
+.5626	8a		txa		                txa ;  It's worth addition for three cells dropped
+.5627	18		clc		                clc
+.5628	69 06 00	adc #$0006	                adc #$0006
+.562b	aa		tax		                tax
+.562c	60		rts		z_cmove         rts
+.562d					xt_cmoveup
+.562d	86 22		stx $22		                stx tmpdsp ;  keep DSP safe
+.562f	88		dey		                dey
+.5630	5a		phy		                phy ;  save number of bytes to transfer
+.5631	b5 00		lda $00,x	                lda $00,x ;  get destination address
+.5633	a8		tay		                tay
+.5634	b5 02		lda $02,x	                lda $02,x ;  get source address
+.5636	aa		tax		                tax
+.5637	68		pla		                pla ;  retrieve number of bytes to transfer
+.5638	54 00 00	mvn $00,$00	                mvn 0,0
+.563b	a6 22		ldx $22		                ldx tmpdsp
+.563d	b4 04		ldy $04,x	                ldy $04,x
+.563f	8a		txa		                txa ;  It's worth addition for three cells dropped
+.5640	18		clc		                clc
+.5641	69 06 00	adc #$0006	                adc #$0006
+.5644	aa		tax		                tax
+.5645	60		rts		z_cmoveup       rts
+.5646					xt_compile_only
+.5646	a9 01 00	lda #$0001	                lda #CO
+.5649	eb		xba		                xba ;  flags are MSB
+.564a	12 02		ora ($02)	                ora (dp) ;  ORA (DP)
+.564c	92 02		sta ($02)	                sta (dp)
+.564e	60		rts		z_compile_only  rts
+.564f					xt_compilecomma
+.564f	5a		phy		                phy ;  save copy of xt
+.5650	20 2f 5a	jsr $5a2f	                jsr xt_int_name ;  ( xt -- nt )
+.5653	b9 00 00	lda $0000,y	                lda $0000,y ;  Get content of nt
+.5656	eb		xba		                xba ;  flags are MSB
+.5657	29 02 00	and #$0002	                and #AN ;  mask everything but Compile Only bit
+.565a	f0 05		beq $5661	                beq compile_check
+.565c	20 45 60	jsr $6045	                jsr xt_wordsize ;  ( nt -- u )
+.565f	80 12		bra $5673	                bra compile_as_code
+.5661					compile_check
+.5661	b9 00 00	lda $0000,y	                lda $0000,y
+.5664	eb		xba		                xba
+.5665	29 08 00	and #$0008	                and #NN
+.5668	d0 62		bne $56cc	                bne compile_as_jump
+.566a	20 45 60	jsr $6045	                jsr xt_wordsize ;  ( nt -- u )
+.566d	98		tya		                tya
+.566e	18		clc		                clc
+.566f	c5 26		cmp $26		                cmp nc_limit
+.5671	b0 59		bcs $56cc	                bcs compile_as_jump ;  if too large, compile as a jump
+.5673					compile_as_code
+.5673	ca		dex		                dex
+.5674	ca		dex		                dex
+.5675	68		pla		                pla
+.5676	95 00		sta $00,x	                sta $00,x ;  ( xt u )
+.5678	ca		dex		                dex
+.5679	ca		dex		                dex
+.567a	a5 00		lda $00		                lda cp
+.567c	95 00		sta $00,x	                sta $00,x ;  ( xt cp u )
+.567e	98		tya		                tya
+.567f	3a		dec a		                dec a
+.5680	d0 14		bne $5696	                bne compile_not_nop
+.5682	a1 02		lda ($02,x)	                lda ($02,x)
+.5684	29 ff 00	and #$00ff	                and #$00ff
+.5687	c9 ea 00	cmp #$00ea	                cmp #$00ea ;  opcode for NOP
+.568a	d0 0a		bne $5696	                bne compile_not_nop
+.568c	b4 04		ldy $04,x	                ldy $04,x
+.568e	8a		txa		                txa
+.568f	18		clc		                clc
+.5690	69 06 00	adc #$0006	                adc #$0006
+.5693	aa		tax		                tax
+.5694	80 4c		bra $56e2	                bra z_compilecomma
+.5696					compile_not_nop
+.5696	b5 02		lda $02,x	                lda $02,x ;  get xt
+.5698	c9 83 51	cmp #$5183	                cmp #xt_tor
+.569b	f0 11		beq $56ae	                beq compile_r
+.569d	c9 fb 5c	cmp #$5cfb	                cmp #xt_fromr
+.56a0	f0 0c		beq $56ae	                beq compile_r
+.56a2	c9 cb 53	cmp #$53cb	                cmp #xt_twotor
+.56a5	f0 0d		beq $56b4	                beq compile_2r
+.56a7	c9 fb 53	cmp #$53fb	                cmp #xt_twofromr
+.56aa	f0 08		beq $56b4	                beq compile_2r
+.56ac	80 12		bra $56c0	                bra compile_move ;  not a special case
+.56ae					compile_r
+.56ae	f6 02		inc $02,x	                inc $02,x ;  start one byte later
+.56b0	88		dey		                dey ;  transfer two bytes less
+.56b1	88		dey		                dey
+.56b2	80 0c		bra $56c0	                bra compile_move
+.56b4					compile_2r
+.56b4	f6 02		inc $02,x	                inc $02,x
+.56b6	f6 02		inc $02,x	                inc $02,x
+.56b8	f6 02		inc $02,x	                inc $02,x
+.56ba	98		tya		                tya
+.56bb	38		sec		                sec
+.56bc	e9 06 00	sbc #$0006	                sbc #$0006
+.56bf	a8		tay		                tay ;  fall through to compile_move
+.56c0					compile_move
+.56c0	5a		phy		                phy ;  we need a copy of length for the CP
+.56c1	20 3d 5b	jsr $5b3d	                jsr xt_move ;  ( xt cp u -- )
+.56c4	68		pla		                pla
+.56c5	18		clc		                clc ;  update CP
+.56c6	65 00		adc $00		                adc cp
+.56c8	85 00		sta $00		                sta cp
+.56ca	80 16		bra $56e2	                bra z_compilecomma
+.56cc					compile_as_jump
+.56cc	7a		ply		                ply ;  get xt back
+.56cd	e2 20		sep #$20	                SEP #$20        ; set A short
+.56cf	a9 20		lda #$20	                lda #$20 ;  opcode for JSR
+.56d1	92 00		sta ($00)	                sta (cp) ;  STA (CP)
+.56d3	c2 20		rep #$20	                REP #$20        ; set A long
+.56d5	e6 00		inc $00		                inc cp
+.56d7	98		tya		                tya
+.56d8	92 00		sta ($00)	                sta (cp)
+.56da	e6 00		inc $00		                inc cp
+.56dc	e6 00		inc $00		                inc cp
+.56de	b4 00		ldy $00,x	                ldy $00,x
+.56e0	e8		inx		                inx
+.56e1	e8		inx		                inx
+.56e2	60		rts		z_compilecomma  rts
+.56e3					xt_constant
+.56e3	20 27 57	jsr $5727	                jsr xt_create
+.56e6	a5 00		lda $00		                lda cp
+.56e8	3a		dec a		                dec a
+.56e9	3a		dec a		                dec a
+.56ea	85 1c		sta $1c		                sta tmp1
+.56ec	a9 80 69	lda #$6980	                lda #doconst
+.56ef	92 1c		sta ($1c)	                sta (tmp1) ;  STA (TMP1)
+.56f1	98		tya		                tya ;  there is no "sty.di cp"
+.56f2	92 00		sta ($00)	                sta (cp)
+.56f4	e6 00		inc $00		                inc cp
+.56f6	e6 00		inc $00		                inc cp
+.56f8	b4 00		ldy $00,x	                ldy $00,x ;  DROP
+.56fa	e8		inx		                inx
+.56fb	e8		inx		                inx ;  drop through to adjust_z
+.56fc					adjust_z
+.56fc	20 7f 5a	jsr $5a7f	                jsr xt_latestnt ;  gives us ( nt )
+.56ff	98		tya		                tya
+.5700	18		clc		                clc
+.5701	69 06 00	adc #$0006	                adc #$0006
+.5704	a8		tay		                tay
+.5705	b9 00 00	lda $0000,y	                lda $0000,y ;  LDA 0000,Y
+.5708	1a		inc a		                inc a
+.5709	1a		inc a		                inc a
+.570a	99 00 00	sta $0000,y	                sta $0000,y
+.570d	b4 00		ldy $00,x	                ldy $00,x ;  get rid of nt
+.570f	e8		inx		                inx
+.5710	e8		inx		                inx
+.5711	60		rts		z_constant      rts
+.5712					xt_count
+.5712	98		tya		                tya
+.5713	1a		inc a		                inc a ;  String address starts one char later
+.5714	ca		dex		                dex
+.5715	ca		dex		                dex
+.5716	95 00		sta $00,x	                sta $00,x ;  NOS
+.5718	b9 00 00	lda $0000,y	                lda $0000,y ;  LDA $0000,Y  first byte is length
+.571b	29 ff 00	and #$00ff	                and #$00ff ;  get rid of whatever was MSB
+.571e	a8		tay		                tay ;  TOS
+.571f	60		rts		z_count         rts
+.5720					xt_cr
+.5720	a9 0a 00	lda #$000a	                lda #AscLF ;  test with AscCR for emulators
+.5723	20 b7 58	jsr $58b7	                jsr emit_a
+.5726	60		rts		z_cr            rts
+.5727					xt_create
+.5727	20 39 5c	jsr $5c39	                jsr xt_parse_name ;  ( -- addr u )
+.572a	d0 06		bne $5732	                bne create_got_name
+.572c	a9 0d 72	lda #$720d	                lda #es_noname
+.572f	4c 36 6a	jmp $6a36	                jmp error
+.5732					create_got_name
+.5732	a5 00		lda $00		                lda cp
+.5734	85 1c		sta $1c		                sta tmp1 ;  save start of new word
+.5736	98		tya		                tya
+.5737	29 ff 00	and #$00ff	                and #$00ff
+.573a	85 1e		sta $1e		                sta tmp2 ;  save length of name string
+.573c	18		clc		                clc
+.573d	69 08 00	adc #$0008	                adc #$0008
+.5740	85 20		sta $20		                sta tmp3 ;  total bytes required for header
+.5742	1a		inc a		                inc a
+.5743	1a		inc a		                inc a
+.5744	1a		inc a		                inc a
+.5745	18		clc		                clc
+.5746	65 00		adc $00		                adc cp
+.5748	85 00		sta $00		                sta cp
+.574a	b5 00		lda $00,x	                lda $00,x
+.574c	48		pha		                pha
+.574d	a0 00 00	ldy #$0000	                ldy #$0000 ;  Y is now an index, not TOS
+.5750	a5 1e		lda $1e		                lda tmp2 ;  get length byte
+.5752	91 1c		sta ($1c),y	                sta (tmp1),y ;  STA (TMP1),Y
+.5754	c8		iny		                iny
+.5755	c8		iny		                iny
+.5756	a5 02		lda $02		                lda dp
+.5758	91 1c		sta ($1c),y	                sta (tmp1),y
+.575a	c8		iny		                iny
+.575b	c8		iny		                iny
+.575c	a5 1c		lda $1c		                lda tmp1 ;  can't use CP, because we've allotted space
+.575e	85 02		sta $02		                sta dp ;  while we've got it, make old CP the new DP
+.5760	18		clc		                clc
+.5761	65 20		adc $20		                adc tmp3 ;  total header length
+.5763	91 1c		sta ($1c),y	                sta (tmp1),y
+.5765	c8		iny		                iny
+.5766	c8		iny		                iny
+.5767	1a		inc a		                inc a
+.5768	1a		inc a		                inc a
+.5769	1a		inc a		                inc a
+.576a	91 1c		sta ($1c),y	                sta (tmp1),y
+.576c	c8		iny		                iny
+.576d	c8		iny		                iny
+.576e	68		pla		                pla ;  get back string address
+.576f	38		sec		                sec
+.5770	e9 08 00	sbc #$0008	                sbc #$0008
+.5773	85 20		sta $20		                sta tmp3
+.5775	e2 20		sep #$20	                SEP #$20        ; set A short
+.5777					-
+.5777	b1 20		lda ($20),y	                lda (tmp3),y
+.5779	91 1c		sta ($1c),y	                sta (tmp1),y
+.577b	c8		iny		                iny
+.577c	c6 1e		dec $1e		                dec tmp2
+.577e	d0 f7		bne $5777	                bne -
+.5780	a9 20		lda #$20	                lda #$20 ;  opcode of JSR
+.5782	91 1c		sta ($1c),y	                sta (tmp1),y
+.5784	c8		iny		                iny ;  single increase only because we have 8-bit A
+.5785	a9 aa		lda #$aa	                lda #<dovar
+.5787	91 1c		sta ($1c),y	                sta (tmp1),y
+.5789	c8		iny		                iny
+.578a	a9 69		lda #$69	                lda #>dovar
+.578c	91 1c		sta ($1c),y	                sta (tmp1),y
+.578e	c2 20		rep #$20	                REP #$20        ; set A long
+.5790	b4 02		ldy $02,x	                ldy $02,x
+.5792	e8		inx		                inx
+.5793	e8		inx		                inx
+.5794	e8		inx		                inx
+.5795	e8		inx		                inx
+.5796	60		rts		z_create        rts
+.5797					xt_defer
+.5797	20 27 57	jsr $5727	                jsr xt_create
+.579a	a5 00		lda $00		                lda cp
+.579c	3a		dec a		                dec a
+.579d	3a		dec a		                dec a
+.579e	85 1c		sta $1c		                sta tmp1
+.57a0	a9 8e 69	lda #$698e	                lda #dodefer
+.57a3	92 1c		sta ($1c)	                sta (tmp1) ;  STA (TMP1)
+.57a5	a9 97 69	lda #$6997	                lda #defer_error
+.57a8	92 00		sta ($00)	                sta (cp)
+.57aa	e6 00		inc $00		                inc cp
+.57ac	e6 00		inc $00		                inc cp
+.57ae	20 fc 56	jsr $56fc	                jsr adjust_z ;  adjust the header to the correct length
+.57b1	60		rts		z_defer         rts
+.57b2					xt_digitq
+.57b2	98		tya		                tya
+.57b3	29 ff 00	and #$00ff	                and #$00ff ;  paranoid
+.57b6	e2 20		sep #$20	                SEP #$20        ; set A short
+.57b8	c9 30		cmp #$30	                cmp #'0'
+.57ba	90 1d		bcc $57d9	                bcc dq_notdigit
+.57bc	c9 3a		cmp #$3a	                cmp #'9'+1 ;  This is ':'
+.57be	90 12		bcc $57d2	                bcc dq_checkbase
+.57c0	c9 40		cmp #$40	                cmp #'A'-1 ;  This is '@'
+.57c2	90 15		bcc $57d9	                bcc dq_notdigit
+.57c4	c9 61		cmp #$61	                cmp #'a'
+.57c6	90 07		bcc $57cf	                bcc dq_case_done ;  not lower case, too low
+.57c8	c9 7b		cmp #$7b	                cmp #'z'+1
+.57ca	b0 03		bcs $57cf	                bcs dq_case_done ;  not lower case, too high
+.57cc	18		clc		                clc ;  just right
+.57cd	69 e0		adc #$e0	                adc #$e0 ;  offset to uppercase (wraps)
+.57cf					dq_case_done
+.57cf	38		sec		                sec
+.57d0	e9 07		sbc #$07	                sbc #$07 ;  fall through to dq_checkbase
+.57d2					dq_checkbase
+.57d2	38		sec		                sec
+.57d3	e9 30		sbc #$30	                sbc #'0' ;  This is also the actual conversion step
+.57d5	c5 16		cmp $16		                cmp base
+.57d7	90 0b		bcc $57e4	                bcc dq_success
+.57d9					dq_notdigit
+.57d9	ca		dex		                dex
+.57da	ca		dex		                dex
+.57db	94 00		sty $00,x	                sty $00,x ;  keep the offending character in NOS
+.57dd	a0 00 00	ldy #$0000	                ldy #$0000
+.57e0	c2 20		rep #$20	                REP #$20        ; set A long
+.57e2	80 09		bra $57ed	                bra z_digitq
+.57e4					dq_success
+.57e4	ca		dex		                dex
+.57e5	ca		dex		                dex
+.57e6	c2 20		rep #$20	                REP #$20        ; set A long
+.57e8	95 00		sta $00,x	                sta $00,x ;  put the number in NOS
+.57ea	a0 ff ff	ldy #$ffff	                ldy #$0ffff
+.57ed	60		rts		z_digitq        rts
+.57ee					xt_dplus
+.57ee	5a		phy		                phy ;  save hi word of first number, frees Y
+.57ef	b5 00		lda $00,x	                lda $00,x ;  lo word of first number
+.57f1	18		clc		                clc
+.57f2	75 04		adc $04,x	                adc $04,x ;  add lo word of second number
+.57f4	a8		tay		                tay
+.57f5	68		pla		                pla ;  get hi word of first number
+.57f6	75 02		adc $02,x	                adc $02,x ;  add hi word of second number
+.57f8	e8		inx		                inx
+.57f9	e8		inx		                inx
+.57fa	e8		inx		                inx
+.57fb	e8		inx		                inx
+.57fc	94 00		sty $00,x	                sty $00,x ;  lo result goes NOS
+.57fe	a8		tay		                tay ;  to result goes TOS
+.57ff	60		rts		z_dplus         rts
+.5800					xt_dminus
+.5800	b5 04		lda $04,x	                lda $04,x ;  lo word NOS
+.5802	38		sec		                sec
+.5803	f5 00		sbc $00,x	                sbc $00,x ;  lo word TOS
+.5805	48		pha		                pha
+.5806	94 00		sty $00,x	                sty $00,x ;  use as temp storage for hi word TOS
+.5808	b5 02		lda $02,x	                lda $02,x ;  hi word, NOS
+.580a	f5 00		sbc $00,x	                sbc $00,x ;  hi word, TOS
+.580c	a8		tay		                tay ;  result hi word now TOS
+.580d	e8		inx		                inx
+.580e	e8		inx		                inx
+.580f	e8		inx		                inx
+.5810	e8		inx		                inx
+.5811	68		pla		                pla
+.5812	95 00		sta $00,x	                sta $00,x ;  result lo word now NOS
+.5814	60		rts		z_dminus        rts
+.5815					xt_dtos
+.5815	b4 00		ldy $00,x	                ldy $00,x
+.5817	e8		inx		                inx
+.5818	e8		inx		                inx
+.5819	60		rts		z_dtos          rts
+.581a					xt_dabs
+.581a	98		tya		                tya ;  force flag test
+.581b	f0 03		beq $5820	                beq z_dabs ;  already positive, life is good
+.581d	20 36 58	jsr $5836	                jsr xt_dnegate
+.5820	60		rts		z_dabs          rts
+.5821					xt_decimal
+.5821	a9 0a 00	lda #$000a	                lda #$000a
+.5824	85 16		sta $16		                sta base
+.5826	60		rts		z_decimal       rts
+.5827					xt_depth
+.5827	86 22		stx $22		                stx tmpdsp
+.5829	a9 ff 00	lda #$00ff	                lda #dsp0
+.582c	38		sec		                sec
+.582d	e5 22		sbc $22		                sbc tmpdsp
+.582f	4a		lsr a		                lsr a
+.5830	ca		dex		                dex
+.5831	ca		dex		                dex
+.5832	94 00		sty $00,x	                sty $00,x
+.5834	a8		tay		                tay
+.5835	60		rts		z_depth         rts
+.5836					xt_dnegate
+.5836	b5 00		lda $00,x	                lda $00,x
+.5838	49 ff ff	eor #$ffff	                eor #$0ffff
+.583b	18		clc		                clc
+.583c	69 01 00	adc #$0001	                adc #$0001
+.583f	95 00		sta $00,x	                sta $00,x
+.5841	98		tya		                tya
+.5842	49 ff ff	eor #$ffff	                eor #$0ffff
+.5845	69 00 00	adc #$0000	                adc #$0000 ;  we are only interested in the carry
+.5848	a8		tay		                tay
+.5849	60		rts		z_dnegate       rts
+.584a					xt_qdo
+.584a	a9 ff ff	lda #$ffff	                lda #$0ffff
+.584d	85 1c		sta $1c		                sta tmp1
+.584f	80 02		bra $5853	                bra do_common ;  continue with do_common
+.5851					xt_do
+.5851	64 1c		stz $1c		                stz tmp1 ;  0 is DO, drop through to DO_COMMON
+.5853					do_common
+.5853	a9 a9 00	lda #$00a9	                lda #$00a9
+.5856	92 00		sta ($00)	                sta (cp)
+.5858	e6 00		inc $00		                inc cp
+.585a	ca		dex		                dex
+.585b	ca		dex		                dex
+.585c	94 00		sty $00,x	                sty $00,x
+.585e	a4 00		ldy $00		                ldy cp
+.5860	e6 00		inc $00		                inc cp
+.5862	e6 00		inc $00		                inc cp
+.5864	a9 48 00	lda #$0048	                lda #$0048
+.5867	92 00		sta ($00)	                sta (cp)
+.5869	e6 00		inc $00		                inc cp
+.586b	ca		dex		                dex
+.586c	ca		dex		                dex
+.586d	94 00		sty $00,x	                sty $00,x
+.586f	a5 1c		lda $1c		                lda tmp1
+.5871	f0 05		beq $5878	                beq do_do ;  childish, yes
+.5873	a0 b1 52	ldy #$52b1	                ldy #xt_pqdo
+.5876	80 03		bra $587b	                bra do_compile
+.5878					do_do
+.5878	a0 c8 52	ldy #$52c8	                ldy #xt_pdo
+.587b					do_compile
+.587b	20 4f 56	jsr $564f	                jsr xt_compilecomma
+.587e	ca		dex		                dex
+.587f	ca		dex		                dex
+.5880	94 00		sty $00,x	                sty $00,x
+.5882	a4 00		ldy $00		                ldy cp
+.5884					z_qdo
+.5884					z_do
+.5884	60		rts		                rts
+.5885					xt_does
+.5885	f4 92 58	pea #$5892	                pea does_rt
+.5888	20 15 6a	jsr $6a15	                jsr cmpl_subroutine
+.588b	f4 9d 69	pea #$699d	                pea dodoes
+.588e	20 15 6a	jsr $6a15	                jsr cmpl_subroutine
+.5891	60		rts		z_does          rts
+.5892					does_rt
+.5892	68		pla		                pla
+.5893	1a		inc a		                inc a ;  increase by one because of RTS mechanics
+.5894	85 1c		sta $1c		                sta tmp1
+.5896	a5 02		lda $02		                lda dp
+.5898	18		clc		                clc
+.5899	69 04 00	adc #$0004	                adc #$0004
+.589c	85 1e		sta $1e		                sta tmp2
+.589e	b2 1e		lda ($1e)	                lda (tmp2) ;  LDA (TMP2)
+.58a0	1a		inc a		                inc a
+.58a1	85 1e		sta $1e		                sta tmp2 ;  Points to address to be replaced
+.58a3	a5 1c		lda $1c		                lda tmp1
+.58a5	92 1e		sta ($1e)	                sta (tmp2) ;  STA (TMP2)
+.58a7	60		rts		                rts
+.58a8					xt_drop
+.58a8	b4 00		ldy $00,x	                ldy $00,x
+.58aa	e8		inx		                inx
+.58ab	e8		inx		                inx
+.58ac	60		rts		z_drop          rts
+.58ad					xt_dup
+.58ad	ca		dex		                dex
+.58ae	ca		dex		                dex
+.58af	94 00		sty $00,x	                sty $00,x
+.58b1	60		rts		z_dup           rts
+.58b2					xt_emit
+.58b2	98		tya		                tya
+.58b3	b4 00		ldy $00,x	                ldy $00,x
+.58b5	e8		inx		                inx
+.58b6	e8		inx		                inx
+.58b7					emit_a
+.58b7	6c 0e 00	jmp ($000e)	                jmp (output) ;  call to kernel, JSR/RTS
+.58ba					z_emit
+.58ba					xt_erase
+.58ba	ca		dex		                dex
+.58bb	ca		dex		                dex
+.58bc	94 00		sty $00,x	                sty $00,x
+.58be	a0 00 00	ldy #$0000	                ldy #$0000 ;  falls through to FILL
+.58c1					xt_exit
+.58c1	60		rts		                rts
+.58c2					z_exit
+.58c2					xt_fill
+.58c2	b5 02		lda $02,x	                lda $02,x ;  address is 3OS
+.58c4	85 1e		sta $1e		                sta tmp2
+.58c6	98		tya		                tya
+.58c7	b4 00		ldy $00,x	                ldy $00,x ;  don't bother with drop, to it later
+.58c9	e2 20		sep #$20	                SEP #$20        ; set A short
+.58cb					erase_loop
+.58cb	88		dey		                dey
+.58cc	30 04		bmi $58d2	                bmi erase_done
+.58ce	91 1e		sta ($1e),y	                sta (tmp2),y
+.58d0	80 f9		bra $58cb	                bra erase_loop
+.58d2					erase_done
+.58d2	c2 20		rep #$20	                REP #$20        ; set A long
+.58d4	b4 02		ldy $02,x	                ldy $02,x ;  dump three elements off the sack
+.58d6	8a		txa		                txa
+.58d7	18		clc		                clc
+.58d8	69 06 00	adc #$0006	                adc #$0006
+.58db	aa		tax		                tax
+.58dc					z_fill
+.58dc	60		rts		z_erase         rts
+.58dd					xt_evaluate
+.58dd	a5 0c		lda $0c		                lda toin ;  >IN
+.58df	48		pha		                pha
+.58e0	a5 06		lda $06		                lda insrc ;  Input Source (SOURCE-ID)
+.58e2	48		pha		                pha
+.58e3	a5 08		lda $08		                lda cib
+.58e5	48		pha		                pha
+.58e6	a5 0a		lda $0a		                lda ciblen
+.58e8	48		pha		                pha
+.58e9	a9 ff ff	lda #$ffff	                lda #$0ffff
+.58ec	85 06		sta $06		                sta insrc
+.58ee	64 0c		stz $0c		                stz toin
+.58f0	84 0a		sty $0a		                sty ciblen
+.58f2	b5 00		lda $00,x	                lda $00,x
+.58f4	85 08		sta $08		                sta cib
+.58f6	b4 02		ldy $02,x	                ldy $02,x
+.58f8	e8		inx		                inx
+.58f9	e8		inx		                inx
+.58fa	e8		inx		                inx
+.58fb	e8		inx		                inx
+.58fc	20 b1 69	jsr $69b1	                jsr interpret
+.58ff	68		pla		                pla
+.5900	85 0a		sta $0a		                sta ciblen
+.5902	68		pla		                pla
+.5903	85 08		sta $08		                sta cib
+.5905	68		pla		                pla
+.5906	85 06		sta $06		                sta insrc
+.5908	68		pla		                pla
+.5909	85 0c		sta $0c		                sta toin
+.590b	60		rts		z_evaluate      rts
+>590c	00 00 00			execute_ip      .byte 00, 00, 00
+.590f					xt_execute
+.590f	8c 0c 59	sty $590c	                sty execute_ip
+.5912	b4 00		ldy $00,x	                ldy $00,x
+.5914	e8		inx		                inx
+.5915	e8		inx		                inx
+.5916	6c 0c 59	jmp ($590c)	                jmp (execute_ip) ;  JMP (EXECUTE_IP)
+.5919					z_execute
+.5919					xt_find
+.5919	20 12 57	jsr $5712	                jsr xt_count ;  ( addr u )
+.591c	b5 00		lda $00,x	                lda $00,x
+.591e	48		pha		                pha
+.591f	20 4a 59	jsr $594a	                jsr xt_find_name ;  ( nt | 0 )
+.5922	98		tya		                tya ;  force flag check
+.5923	d0 0a		bne $592f	                bne find_found
+.5925	ca		dex		                dex ;  ( <?> 0 )
+.5926	ca		dex		                dex
+.5927	a0 00 00	ldy #$0000	                ldy #$0000
+.592a	68		pla		                pla
+.592b	95 00		sta $00,x	                sta $00,x ;  ( addr 0 )
+.592d	80 1a		bra $5949	                bra z_find
+.592f					find_found
+.592f	68		pla		                pla ;  we won't need the address after all
+.5930	5a		phy		                phy
+.5931	20 51 5b	jsr $5b51	                jsr xt_name_int ;  ( nt -- xt )
+.5934	ca		dex		                dex
+.5935	ca		dex		                dex
+.5936	94 00		sty $00,x	                sty $00,x ;  ( xt <?> )
+.5938	7a		ply		                ply ;  get nt back
+.5939	b9 00 00	lda $0000,y	                lda $0000,y
+.593c	a0 00 00	ldy #$0000	                ldy #$0000 ;  prepare flag
+.593f	eb		xba		                xba ;  flags are MSB
+.5940	29 04 00	and #$0004	                and #IM ;  Mask all but IM bit
+.5943	d0 03		bne $5948	                bne find_imm ;  IMMEDIATE word, return 1
+.5945	88		dey		                dey ;  not emmediate, return -1
+.5946	80 01		bra $5949	                bra z_find
+.5948					find_imm
+.5948	c8		iny		                iny
+.5949	60		rts		z_find          rts
+.594a					xt_find_name
+.594a	84 24		sty $24		                sty tmptos ;  length of mystery string in tmptos, Y now free
+.594c	a4 02		ldy $02		                ldy dp
+.594e	84 1c		sty $1c		                sty tmp1 ;  nt of first Dictionary word
+.5950	b4 00		ldy $00,x	                ldy $00,x
+.5952	84 1e		sty $1e		                sty tmp2 ;  address of mystery string, was NOS
+.5954					find_name_loop
+.5954	b2 1c		lda ($1c)	                lda (tmp1) ;  LSB in first header word is length
+.5956	29 ff 00	and #$00ff	                and #$00ff
+.5959	c5 24		cmp $24		                cmp tmptos ;  we test LSB
+.595b	f0 0c		beq $5969	                beq find_name_chars
+.595d					find_name_next_entry
+.595d	e6 1c		inc $1c		                inc tmp1
+.595f	e6 1c		inc $1c		                inc tmp1
+.5961	b2 1c		lda ($1c)	                lda (tmp1) ;  LDA (TMP1)
+.5963	f0 36		beq $599b	                beq find_name_failure_16
+.5965	85 1c		sta $1c		                sta tmp1 ;  new header
+.5967	80 eb		bra $5954	                bra find_name_loop
+.5969					find_name_chars
+.5969	e2 20		sep #$20	                SEP #$20        ; set A short
+.596b	a0 08 00	ldy #$0008	                ldy #$0008
+.596e	b1 1c		lda ($1c),y	                lda (tmp1),y ;  LDA (TMP1),Y - first char of entry
+.5970	d2 1e		cmp ($1e)	                cmp (tmp2) ;  CMP (TMP2) - first char of mystery string
+.5972	f0 04		beq $5978	                beq find_name_all_chars
+.5974					find_name_char_nomatcnt_8
+.5974	c2 20		rep #$20	                REP #$20        ; set A long
+.5976	80 e5		bra $595d	                bra find_name_next_entry
+.5978					find_name_all_chars
+.5978	a4 24		ldy $24		                ldy tmptos
+.597a	88		dey		                dey ;  faster and shorter than CPY.# 01
+.597b	f0 18		beq $5995	                beq find_name_success
+.597d	c2 20		rep #$20	                REP #$20        ; set A long
+.597f	a5 1c		lda $1c		                lda tmp1 ;  address of Dictionary string
+.5981	18		clc		                clc
+.5982	69 08 00	adc #$0008	                adc #$0008
+.5985	85 20		sta $20		                sta tmp3
+.5987	e2 20		sep #$20	                SEP #$20        ; set A short
+.5989	a4 24		ldy $24		                ldy tmptos ;  get length of strings as loop index
+.598b	88		dey		                dey ;  first index is length minus 1
+.598c					-
+.598c	b1 1e		lda ($1e),y	                lda (tmp2),y ;  LDA (TMP2),Y - last char of mystery string
+.598e	d1 20		cmp ($20),y	                cmp (tmp3),y ;  CMP (TMP1),Y - last char of DP string
+.5990	d0 e2		bne $5974	                bne find_name_char_nomatcnt_8
+.5992	88		dey		                dey ;  start of string (Y=0) was already tested
+.5993	d0 f7		bne $598c	                bne -
+.5995					find_name_success
+.5995	c2 20		rep #$20	                REP #$20        ; set A long
+.5997	a4 1c		ldy $1c		                ldy tmp1 ;  get the correct DP
+.5999	80 03		bra $599e	                bra find_name_done
+.599b					find_name_failure_16
+.599b	a0 00 00	ldy #$0000	                ldy #$0000 ;  fall thru
+.599e					find_name_done
+.599e	e8		inx		                inx ;  drop old address (NIP)
+.599f	e8		inx		                inx
+.59a0	60		rts		z_find_name     rts
+.59a1					xt_fmmod
+.59a1	20 ad 58	jsr $58ad	                jsr xt_dup
+.59a4	20 83 51	jsr $5183	                jsr xt_tor
+.59a7	20 ad 58	jsr $58ad	                jsr xt_dup
+.59aa	98		tya		                tya ;  0< IF
+.59ab	10 12		bpl $59bf	                bpl fmmod_1
+.59ad	b4 00		ldy $00,x	                ldy $00,x
+.59af	e8		inx		                inx
+.59b0	e8		inx		                inx
+.59b1	20 73 5b	jsr $5b73	                jsr xt_negate
+.59b4	20 83 51	jsr $5183	                jsr xt_tor
+.59b7	20 36 58	jsr $5836	                jsr xt_dnegate
+.59ba	20 fb 5c	jsr $5cfb	                jsr xt_fromr
+.59bd	80 04		bra $59c3	                bra fmmod_1_1
+.59bf					fmmod_1
+.59bf	b4 00		ldy $00,x	                ldy $00,x
+.59c1	e8		inx		                inx
+.59c2	e8		inx		                inx
+.59c3					fmmod_1_1
+.59c3	20 83 51	jsr $5183	                jsr xt_tor
+.59c6	20 ad 58	jsr $58ad	                jsr xt_dup
+.59c9	20 72 53	jsr $5372	                jsr xt_zero_less
+.59cc	20 f2 5c	jsr $5cf2	                jsr xt_rfetch
+.59cf	20 52 55	jsr $5552	                jsr xt_and
+.59d2	20 f7 52	jsr $52f7	                jsr xt_plus
+.59d5	20 fb 5c	jsr $5cfb	                jsr xt_fromr
+.59d8	20 77 5f	jsr $5f77	                jsr xt_ummod
+.59db	20 fb 5c	jsr $5cfb	                jsr xt_fromr
+.59de	98		tya		                tya
+.59df	10 0f		bpl $59f0	                bpl fmmod_2
+.59e1	b4 00		ldy $00,x	                ldy $00,x
+.59e3	e8		inx		                inx
+.59e4	e8		inx		                inx
+.59e5	20 b0 5e	jsr $5eb0	                jsr xt_swap
+.59e8	20 73 5b	jsr $5b73	                jsr xt_negate
+.59eb	20 b0 5e	jsr $5eb0	                jsr xt_swap
+.59ee	80 04		bra $59f4	                bra fmmod_2_1
+.59f0					fmmod_2
+.59f0	b4 00		ldy $00,x	                ldy $00,x
+.59f2	e8		inx		                inx
+.59f3	e8		inx		                inx
+.59f4					fmmod_2_1
+.59f4	60		rts		z_fmmod         rts
+.59f5					xt_key
+.59f5	ca		dex		                dex             ; make room on Data Stack
+.59f6	ca		dex		                dex
+.59f7	b4 00		ldy $00,x	                ldy $00,x
+.59f9	86 22		stx $22		                stx tmpdsp
+.59fb	a2 00 00	ldx #$0000	                ldx #$0000
+.59fe	fc 10 00	jsr ($0010,x)	                jsr (input,x) ;  JSR (INPUT,X) - returns char in A
+.5a01	a6 22		ldx $22		                ldx tmpdsp
+.5a03	a8		tay		                tay
+.5a04	60		rts		z_key           rts
+.5a05					xt_keyq
+.5a05	ca		dex		                dex
+.5a06	ca		dex		                dex
+.5a07	94 00		sty $00,x	                sty $00,x
+.5a09	a0 00 00	ldy #$0000	                ldy #$0000 ;  default FALSE
+.5a0c	20 1d 50	jsr $501d	                jsr have_chr
+.5a0f	90 01		bcc $5a12	                bcc z_keyq
+.5a11	88		dey		                dey ;  wrap for TRUE
+.5a12	60		rts		z_keyq          rts
+.5a13					xt_i
+.5a13	ca		dex		                dex
+.5a14	ca		dex		                dex
+.5a15	94 00		sty $00,x	                sty $00,x
+.5a17	38		sec		                sec
+.5a18	a3 01		lda $01,s	                lda $01,s
+.5a1a	e3 03		sbc $03,s	                sbc $03,s
+.5a1c	a8		tay		                tay
+.5a1d	60		rts		z_i             rts
+.5a1e					xt_immediate
+.5a1e	a9 04 00	lda #$0004	                lda #IM ;  Immediate flag
+.5a21	eb		xba		                xba ;  flags are MSB
+.5a22	12 02		ora ($02)	                ora (dp) ;  ORA (DP)
+.5a24	92 02		sta ($02)	                sta (dp)
+.5a26	60		rts		z_immediate     rts
+.5a27					xt_input
+.5a27	ca		dex		                dex
+.5a28	ca		dex		                dex
+.5a29	94 00		sty $00,x	                sty $00,x
+.5a2b	a0 10 00	ldy #$0010	                ldy #input
+.5a2e	60		rts		z_input         rts
+.5a2f					xt_int_name
+.5a2f	a5 02		lda $02		                lda dp ;  nt of first Dictionary word
+.5a31	85 1c		sta $1c		                sta tmp1
+.5a33	84 24		sty $24		                sty tmptos ;  xt of mystery word
+.5a35	a0 04 00	ldy #$0004	                ldy #$0004 ;  xt in header is two bytes down
+.5a38					in_loop
+.5a38	b1 1c		lda ($1c),y	                lda (tmp1),y ;  LDA (TMP1),Y - get xt of current nt
+.5a3a	c5 24		cmp $24		                cmp tmptos
+.5a3c	f0 12		beq $5a50	                beq in_found
+.5a3e	e6 1c		inc $1c		                inc tmp1
+.5a40	e6 1c		inc $1c		                inc tmp1
+.5a42	b2 1c		lda ($1c)	                lda (tmp1) ;  LDA (TMP1)
+.5a44	f0 04		beq $5a4a	                beq in_notfound
+.5a46	85 1c		sta $1c		                sta tmp1 ;  new header
+.5a48	80 ee		bra $5a38	                bra in_loop
+.5a4a					in_notfound
+.5a4a	a9 aa 72	lda #$72aa	                lda #es_syntax
+.5a4d	4c 36 6a	jmp $6a36	                jmp error
+.5a50					in_found
+.5a50	a4 1c		ldy $1c		                ldy tmp1 ;  replace xt by nt
+.5a52	60		rts		z_int_name      rts
+.5a53					xt_invert
+.5a53	98		tya		                tya
+.5a54	49 ff ff	eor #$ffff	                eor #$0ffff
+.5a57	a8		tay		                tay
+.5a58	60		rts		z_invert        rts
+.5a59					xt_here
+.5a59	ca		dex		                dex
+.5a5a	ca		dex		                dex
+.5a5b	94 00		sty $00,x	                sty $00,x
+.5a5d	a4 00		ldy $00		                ldy cp
+.5a5f	60		rts		z_here          rts
+.5a60					xt_hex
+.5a60	a9 10 00	lda #$0010	                lda #$0010
+.5a63	85 16		sta $16		                sta base
+.5a65	60		rts		z_hex           rts
+.5a66					xt_hold
+.5a66	c6 18		dec $18		                dec tohold ;  -1 HLD +!
+.5a68	98		tya		                tya
+.5a69	e2 20		sep #$20	                SEP #$20        ; set A short
+.5a6b	92 18		sta ($18)	                sta (tohold) ;  STA (TOHOLD)
+.5a6d	c2 20		rep #$20	                REP #$20        ; set A long
+.5a6f	b4 00		ldy $00,x	                ldy $00,x
+.5a71	e8		inx		                inx
+.5a72	e8		inx		                inx
+.5a73	60		rts		z_hold          rts
+.5a74					xt_j
+.5a74	ca		dex		                dex
+.5a75	ca		dex		                dex
+.5a76	94 00		sty $00,x	                sty $00,x
+.5a78	38		sec		                sec
+.5a79	a3 07		lda $07,s	                lda $07,s
+.5a7b	e3 09		sbc $09,s	                sbc $09,s
+.5a7d	a8		tay		                tay
+.5a7e	60		rts		z_j             rts
+.5a7f					xt_latestnt
+.5a7f	ca		dex		                dex ;  make room on Data Stack
+.5a80	ca		dex		                dex
+.5a81	94 00		sty $00,x	                sty $00,x
+.5a83	a5 02		lda $02		                lda dp
+.5a85	a8		tay		                tay
+.5a86	60		rts		z_latestnt      rts
+.5a87					xt_latestxt
+.5a87	ca		dex		                dex ;  make room on Data Stack
+.5a88	ca		dex		                dex
+.5a89	94 00		sty $00,x	                sty $00,x
+.5a8b	a5 02		lda $02		                lda dp
+.5a8d	18		clc		                clc ;  xt is stored four bytes below nt in header
+.5a8e	69 04 00	adc #$0004	                adc #$0004
+.5a91	a8		tay		                tay
+.5a92	b9 00 00	lda $0000,y	                lda $0000,y ;  FETCH
+.5a95	a8		tay		                tay
+.5a96	60		rts		z_latestxt      rts
+.5a97					xt_leave
+.5a97	68		pla		                pla
+.5a98	68		pla		                pla
+.5a99	60		rts		                rts
+.5a9a					z_leave
+.5a9a					xt_literal
+.5a9a	f4 ac 5a	pea #$5aac	                pea literal_rt ;  PEA LITERAL_RT
+.5a9d	20 15 6a	jsr $6a15	                jsr cmpl_subroutine
+.5aa0	98		tya		                tya
+.5aa1	92 00		sta ($00)	                sta (cp)
+.5aa3	e6 00		inc $00		                inc cp
+.5aa5	e6 00		inc $00		                inc cp
+.5aa7	b4 00		ldy $00,x	                ldy $00,x ;  DROP
+.5aa9	e8		inx		                inx
+.5aaa	e8		inx		                inx
+.5aab	60		rts		z_literal       rts
+.5aac					literal_rt
+.5aac	ca		dex		                dex
+.5aad	ca		dex		                dex
+.5aae	94 00		sty $00,x	                sty $00,x
+.5ab0	7a		ply		                ply
+.5ab1	c8		iny		                iny
+.5ab2	b9 00 00	lda $0000,y	                lda $0000,y ;  LDA $0000,Y - get value after jump
+.5ab5	c8		iny		                iny ;  move return address past data and restore
+.5ab6	5a		phy		                phy ;  so we can get back home
+.5ab7	a8		tay		                tay ;  Value is now on the Data Stack ( -- n )
+.5ab8	60		rts		                rts
+.5ab9					xt_lshift
+.5ab9	98		tya		                tya
+.5aba	29 0f 00	and #$000f	                and #$000f
+.5abd	f0 09		beq $5ac8	                beq lshift_done ;  if zero shifts, we're done
+.5abf	a8		tay		                tay ;  number of shifts is TOS
+.5ac0	b5 00		lda $00,x	                lda $00,x ;  number is in NOS
+.5ac2					lshift_loop
+.5ac2	0a		asl a		                asl a
+.5ac3	88		dey		                dey
+.5ac4	d0 fc		bne $5ac2	                bne lshift_loop
+.5ac6	95 00		sta $00,x	                sta $00,x ;  put NOS, which last step will pull up
+.5ac8					lshift_done
+.5ac8	b4 00		ldy $00,x	                ldy $00,x
+.5aca	e8		inx		                inx
+.5acb	e8		inx		                inx
+.5acc	60		rts		z_lshift        rts
+.5acd					xt_mstar
+.5acd	98		tya		                tya
+.5ace	55 00		eor $00,x	                eor $00,x
+.5ad0	48		pha		                pha
+.5ad1	98		tya		                tya
+.5ad2	10 05		bpl $5ad9	                bpl mstar_abs_nos
+.5ad4	49 ff ff	eor #$ffff	                eor #$0ffff
+.5ad7	1a		inc a		                inc a
+.5ad8	a8		tay		                tay
+.5ad9					mstar_abs_nos
+.5ad9	b5 00		lda $00,x	                lda $00,x
+.5adb	10 06		bpl $5ae3	                bpl mstar_umstar
+.5add	49 ff ff	eor #$ffff	                eor #$0ffff
+.5ae0	1a		inc a		                inc a
+.5ae1	95 00		sta $00,x	                sta $00,x
+.5ae3					mstar_umstar
+.5ae3	20 18 5f	jsr $5f18	                jsr xt_umstar ;  now ( d ) on stack
+.5ae6	68		pla		                pla
+.5ae7	10 03		bpl $5aec	                bpl z_mstar
+.5ae9	20 36 58	jsr $5836	                jsr xt_dnegate
+.5aec	60		rts		z_mstar         rts
+.5aed					xt_marker
+.5aed	20 27 57	jsr $5727	                jsr xt_create
+.5af0	a5 02		lda $02		                lda dp
+.5af2	92 00		sta ($00)	                sta (cp) ;  STA (CP)
+.5af4	e6 00		inc $00		                inc cp
+.5af6	e6 00		inc $00		                inc cp
+.5af8	20 92 58	jsr $5892	                jsr does_rt
+.5afb	20 9d 69	jsr $699d	                jsr dodoes
+.5afe	20 9d 52	jsr $529d	                jsr xt_fetch ;  ( nt )
+.5b01	84 20		sty $20		                sty tmp3
+.5b03	a0 02 00	ldy #$0002	                ldy #$0002 ;  overwrite TOS, won't be needing it
+.5b06	b1 20		lda ($20),y	                lda (tmp3),y ;  LDA (TMP3),Y
+.5b08	85 02		sta $02		                sta dp
+.5b0a	a0 06 00	ldy #$0006	                ldy #$0006
+.5b0d	b1 02		lda ($02),y	                lda (dp),y ;  LDA (DP),Y
+.5b0f	1a		inc a		                inc a ;  first free byte is one byte further down
+.5b10	85 00		sta $00		                sta cp
+.5b12	b4 00		ldy $00,x	                ldy $00,x
+.5b14	e8		inx		                inx
+.5b15	e8		inx		                inx
+.5b16	60		rts		z_marker        rts
+.5b17					xt_max
+.5b17	98		tya		                tya
+.5b18	d5 00		cmp $00,x	                cmp $00,x
+.5b1a	f0 0b		beq $5b27	                beq max_nip ;  Faster than DROP because TOS is in Y
+.5b1c	f5 00		sbc $00,x	                sbc $00,x
+.5b1e	50 03		bvc $5b23	                bvc max_no_ov ;  no overflow, skip ahead
+.5b20	49 00 80	eor #$8000	                eor #$8000 ;  compliment negative flag
+.5b23					max_no_ov
+.5b23	10 02		bpl $5b27	                bpl max_nip ;  keep TOS
+.5b25					max_drop
+.5b25	b4 00		ldy $00,x	                ldy $00,x ;  DROP so NOS is result
+.5b27					max_nip
+.5b27	e8		inx		                inx
+.5b28	e8		inx		                inx
+.5b29	60		rts		z_max           rts
+.5b2a					xt_min
+.5b2a	98		tya		                tya
+.5b2b	d5 00		cmp $00,x	                cmp $00,x
+.5b2d	f0 0b		beq $5b3a	                beq min_nip ;  Faster than DROP because TOS is in Y
+.5b2f	f5 00		sbc $00,x	                sbc $00,x
+.5b31	50 03		bvc $5b36	                bvc min_no_ov ;  no overflow, skip ahead
+.5b33	49 00 80	eor #$8000	                eor #$8000 ;  compliment negative flag
+.5b36					min_no_ov
+.5b36	30 02		bmi $5b3a	                bmi min_nip ;  keep TOS
+.5b38					min_drop
+.5b38	b4 00		ldy $00,x	                ldy $00,x ;  DROP so NOS is result
+.5b3a					min_nip
+.5b3a	e8		inx		                inx
+.5b3b	e8		inx		                inx
+.5b3c	60		rts		z_min           rts
+.5b3d					xt_move
+.5b3d	98		tya		                tya
+.5b3e	f0 10		beq $5b50	                beq z_move
+.5b40	b5 00		lda $00,x	                lda $00,x ;  addr2 (destination)
+.5b42	d5 02		cmp $02,x	                cmp $02,x ;  addr1 (source)
+.5b44	f0 0a		beq $5b50	                beq z_move
+.5b46	10 05		bpl $5b4d	                bpl move_cmoveup
+.5b48	20 0a 56	jsr $560a	                jsr xt_cmove
+.5b4b	80 03		bra $5b50	                bra z_move ;  don't RTS because we might be natively compiling
+.5b4d					move_cmoveup
+.5b4d	20 2d 56	jsr $562d	                jsr xt_cmoveup
+.5b50	60		rts		z_move          rts
+.5b51					xt_name_int
+.5b51	c8		iny		                iny
+.5b52	c8		iny		                iny
+.5b53	c8		iny		                iny
+.5b54	c8		iny		                iny
+.5b55	b9 00 00	lda $0000,y	                lda $0000,y
+.5b58	a8		tay		                tay
+.5b59	60		rts		z_name_int      rts
+.5b5a					xt_name_string
+.5b5a	ca		dex		                dex ;  move NOS down one
+.5b5b	ca		dex		                dex
+.5b5c	98		tya		                tya
+.5b5d	18		clc		                clc
+.5b5e	69 08 00	adc #$0008	                adc #$0008
+.5b61	95 00		sta $00,x	                sta $00,x ;  NOS
+.5b63	b9 00 00	lda $0000,y	                lda $0000,y ;  LDA $0000,Y
+.5b66	29 ff 00	and #$00ff	                and #$00ff ;  mask all but length byte
+.5b69	a8		tay		                tay
+.5b6a	60		rts		z_name_string   rts
+.5b6b					xt_nc_limit
+.5b6b	ca		dex		                dex
+.5b6c	ca		dex		                dex
+.5b6d	94 00		sty $00,x	                sty $00,x
+.5b6f	a0 26 00	ldy #$0026	                ldy #nc_limit
+.5b72	60		rts		z_nc_limit      rts
+.5b73					xt_negate
+.5b73	98		tya		                tya
+.5b74	49 ff ff	eor #$ffff	                eor #$0ffff
+.5b77	1a		inc a		                inc a
+.5b78	a8		tay		                tay
+.5b79	60		rts		z_negate        rts
+.5b7a					xt_never_compile
+.5b7a	a9 08 00	lda #$0008	                lda #NN
+.5b7d	eb		xba		                xba ;  flags are MSB
+.5b7e	12 02		ora ($02)	                ora (dp) ;  ORA (DP)
+.5b80	92 02		sta ($02)	                sta (dp)
+.5b82	60		rts		z_never_compile rts
+.5b83					xt_nip
+.5b83	e8		inx		                inx
+.5b84	e8		inx		                inx
+.5b85	60		rts		z_nip           rts
+.5b86					xt_number
+.5b86	f4 00 00	pea #$0000	                pea $0000
+.5b89	84 24		sty $24		                sty tmptos ;  save length of string, freeing Y
+.5b8b	e2 20		sep #$20	                SEP #$20        ; set A short
+.5b8d	a1 00		lda ($00,x)	                lda ($00,x) ;  get first character
+.5b8f	c9 2d		cmp #$2d	                cmp #'-'
+.5b91	c2 20		rep #$20	                REP #$20        ; set A long
+.5b93	d0 09		bne $5b9e	                bne number_dot
+.5b95	68		pla		                pla
+.5b96	09 00 ff	ora #$ff00	                ora #$0ff00 ;  MSB is minus
+.5b99	48		pha		                pha
+.5b9a	f6 00		inc $00,x	                inc $00,x ;  start one character later
+.5b9c	c6 24		dec $24		                dec tmptos ;  reduce string length by one
+.5b9e					number_dot
+.5b9e	a5 24		lda $24		                lda tmptos ;  get the string length
+.5ba0	3a		dec a		                dec a ;  subtract one to convert length to index
+.5ba1	18		clc		                clc
+.5ba2	75 00		adc $00,x	                adc $00,x ;  add length of string
+.5ba4	a8		tay		                tay
+.5ba5	e2 20		sep #$20	                SEP #$20        ; set A short
+.5ba7	b9 00 00	lda $0000,y	                lda $0000,y ;  get last character
+.5baa	c9 2e		cmp #$2e	                cmp #'.'
+.5bac	c2 20		rep #$20	                REP #$20        ; set A long
+.5bae	d0 07		bne $5bb7	                bne number_main
+.5bb0	68		pla		                pla ;  get the flag back
+.5bb1	09 ff 00	ora #$00ff	                ora #$00ff ;  LSB is double
+.5bb4	48		pha		                pha
+.5bb5	c6 24		dec $24		                dec tmptos ;  reduce string length by one
+.5bb7					number_main
+.5bb7	b5 00		lda $00,x	                lda $00,x ;  get the string address to safety
+.5bb9	74 00		stz $00,x	                stz $00,x ;  NOS is now zero
+.5bbb	ca		dex		                dex
+.5bbc	ca		dex		                dex
+.5bbd	74 00		stz $00,x	                stz $00,x ;  3OS and NOS are now zero
+.5bbf	ca		dex		                dex
+.5bc0	ca		dex		                dex
+.5bc1	95 00		sta $00,x	                sta $00,x ;  address is back as NOS
+.5bc3	a4 24		ldy $24		                ldy tmptos ;  length is back as TOS
+.5bc5					number_loop
+.5bc5	20 26 51	jsr $5126	                jsr xt_tonumber ;  ( ud addr u -- ud addr u )
+.5bc8	98		tya		                tya ;  test length of returned string, should be 0
+.5bc9	f0 06		beq $5bd1	                beq number_ok
+.5bcb	a9 aa 72	lda #$72aa	                lda #es_syntax
+.5bce	4c 36 6a	jmp $6a36	                jmp error
+.5bd1					number_ok
+.5bd1	b4 02		ldy $02,x	                ldy $02,x
+.5bd3	e8		inx		                inx
+.5bd4	e8		inx		                inx
+.5bd5	e8		inx		                inx
+.5bd6	e8		inx		                inx
+.5bd7	68		pla		                pla ;  get copy of the flags
+.5bd8	48		pha		                pha
+.5bd9	29 ff 00	and #$00ff	                and #$00ff ;  only keep the part with the number size (LSB)
+.5bdc	f0 1b		beq $5bf9	                beq number_single
+.5bde	68		pla		                pla
+.5bdf	29 00 ff	and #$ff00	                and #$0ff00 ;  only keep part with the sing (MSB)
+.5be2	f0 25		beq $5c09	                beq z_number ;  no minus, all done
+.5be4	b5 00		lda $00,x	                lda $00,x ;  DNEGATE, starts with LSW
+.5be6	49 ff ff	eor #$ffff	                eor #$0ffff
+.5be9	18		clc		                clc
+.5bea	69 01 00	adc #$0001	                adc #$0001
+.5bed	95 00		sta $00,x	                sta $00,x
+.5bef	98		tya		                tya
+.5bf0	49 ff ff	eor #$ffff	                eor #$0ffff
+.5bf3	69 00 00	adc #$0000	                adc #$0000 ;  we are only interested in the carry
+.5bf6	a8		tay		                tay
+.5bf7	80 10		bra $5c09	                bra z_number
+.5bf9					number_single
+.5bf9	b4 00		ldy $00,x	                ldy $00,x
+.5bfb	e8		inx		                inx
+.5bfc	e8		inx		                inx
+.5bfd	68		pla		                pla
+.5bfe	29 00 ff	and #$ff00	                and #$0ff00
+.5c01	f0 06		beq $5c09	                beq z_number ;  no minus, all done
+.5c03	98		tya		                tya ;  NEGATE
+.5c04	49 ff ff	eor #$ffff	                eor #$0ffff
+.5c07	1a		inc a		                inc a
+.5c08	a8		tay		                tay ;  fall through to end
+.5c09	60		rts		z_number        rts
+.5c0a					xt_or
+.5c0a	98		tya		                tya
+.5c0b	15 00		ora $00,x	                ora $00,x
+.5c0d	a8		tay		                tay
+.5c0e	e8		inx		                inx
+.5c0f	e8		inx		                inx
+.5c10	60		rts		z_or            rts
+.5c11					xt_output
+.5c11	ca		dex		                dex
+.5c12	ca		dex		                dex
+.5c13	94 00		sty $00,x	                sty $00,x
+.5c15	a0 0e 00	ldy #$000e	                ldy #output
+.5c18	60		rts		z_output        rts
+.5c19					xt_over
+.5c19	ca		dex		                dex
+.5c1a	ca		dex		                dex
+.5c1b	94 00		sty $00,x	                sty $00,x
+.5c1d	b4 02		ldy $02,x	                ldy $02,x
+.5c1f	60		rts		z_over          rts
+.5c20					xt_pad
+.5c20	ca		dex		                dex
+.5c21	ca		dex		                dex
+.5c22	94 00		sty $00,x	                sty $00,x
+.5c24	a5 00		lda $00		                lda cp
+.5c26	18		clc		                clc
+.5c27	69 ff 00	adc #$00ff	                adc #padoffset
+.5c2a	a8		tay		                tay
+.5c2b	60		rts		z_pad           rts
+.5c2c					xt_page
+.5c2c	a9 b9 72	lda #$72b9	                lda #vt100_page
+.5c2f	20 3c 6a	jsr $6a3c	                jsr print_string
+.5c32	a9 be 72	lda #$72be	                lda #vt100_home
+.5c35	20 3c 6a	jsr $6a3c	                jsr print_string
+.5c38	60		rts		z_page          rts
+.5c39					xt_parse_name
+.5c39	5a		phy		                phy ;  save TOS for later use
+.5c3a	a4 0c		ldy $0c		                ldy toin ;  >IN
+.5c3c	e2 20		sep #$20	                SEP #$20        ; set A short
+.5c3e					parse_name_loop
+.5c3e	c4 0a		cpy $0a		                cpy ciblen ;  end of line?
+.5c40	f0 09		beq $5c4b	                beq parse_name_empty_line
+.5c42	b1 08		lda ($08),y	                lda (cib),y ;  LDA (CIB),Y
+.5c44	c9 20		cmp #$20	                cmp #AscSP
+.5c46	d0 19		bne $5c61	                bne parse_name_found
+.5c48	c8		iny		                iny
+.5c49	80 f3		bra $5c3e	                bra parse_name_loop
+.5c4b					parse_name_empty_line
+.5c4b	c2 20		rep #$20	                REP #$20        ; set A long
+.5c4d	ca		dex		                dex
+.5c4e	ca		dex		                dex
+.5c4f	ca		dex		                dex
+.5c50	ca		dex		                dex
+.5c51	7a		ply		                ply ;  restore old TOS as 3OS
+.5c52	94 02		sty $02,x	                sty $02,x
+.5c54	a5 08		lda $08		                lda cib
+.5c56	18		clc		                clc
+.5c57	65 0a		adc $0a		                adc ciblen
+.5c59	95 00		sta $00,x	                sta $00,x ;  Address as NOS
+.5c5b	a0 00 00	ldy #$0000	                ldy #$0000 ;  TOS
+.5c5e	4c 9f 5c	jmp $5c9f	                jmp z_parse_name ;  don't have to go through PARSE
+.5c61					parse_name_found
+.5c61	c2 20		rep #$20	                REP #$20        ; set A long
+.5c63	84 0c		sty $0c		                sty toin ;  new >IN
+.5c65	7a		ply		                ply ;  recover TOS
+.5c66	ca		dex		                dex
+.5c67	ca		dex		                dex
+.5c68	94 00		sty $00,x	                sty $00,x
+.5c6a	a0 20 00	ldy #$0020	                ldy #AscSP ;  put space on TOS for PARSE
+.5c6d					xt_parse
+.5c6d	84 1c		sty $1c		                sty tmp1 ;  save delimiter, char is LSB
+.5c6f	a5 0c		lda $0c		                lda toin
+.5c71	85 20		sta $20		                sta tmp3 ;  save >IN for later length calculation
+.5c73	18		clc		                clc
+.5c74	65 08		adc $08		                adc cib
+.5c76	ca		dex		                dex ;  save addr as NOS
+.5c77	ca		dex		                dex
+.5c78	95 00		sta $00,x	                sta $00,x
+.5c7a	64 1e		stz $1e		                stz tmp2 ;  offset for EOL/char found adjustment of >IN
+.5c7c	a4 0c		ldy $0c		                ldy toin
+.5c7e	e2 20		sep #$20	                SEP #$20        ; set A short
+.5c80					parse_loop
+.5c80	c4 0a		cpy $0a		                cpy ciblen ;  check for EOL first
+.5c82	f0 0d		beq $5c91	                beq parse_reached_eol
+.5c84	b1 08		lda ($08),y	                lda (cib),y ;  LDA (CIB),Y
+.5c86	c5 1c		cmp $1c		                cmp tmp1 ;  found delimiter?
+.5c88	f0 03		beq $5c8d	                beq parse_found_delimiter
+.5c8a	c8		iny		                iny
+.5c8b	80 f3		bra $5c80	                bra parse_loop
+.5c8d					parse_found_delimiter
+.5c8d	c2 20		rep #$20	                REP #$20        ; set A long
+.5c8f	e6 1e		inc $1e		                inc tmp2
+.5c91					parse_reached_eol
+.5c91	c2 20		rep #$20	                REP #$20        ; set A long
+.5c93	98		tya		                tya
+.5c94	38		sec		                sec
+.5c95	e5 20		sbc $20		                sbc tmp3 ;  original value for >IN / index of first char
+.5c97	48		pha		                pha ;  save so we can manipulate Y
+.5c98	98		tya		                tya
+.5c99	18		clc		                clc
+.5c9a	65 1e		adc $1e		                adc tmp2 ;  offset for EOL vs found delimiter
+.5c9c	85 0c		sta $0c		                sta toin
+.5c9e	7a		ply		                ply ;  length of string in TOS
+.5c9f					z_parse_name
+.5c9f	60		rts		z_parse         rts
+.5ca0					xt_pick
+.5ca0	86 22		stx $22		                stx tmpdsp
+.5ca2	98		tya		                tya ;  Y is just an offset to the DSP
+.5ca3	0a		asl a		                asl a ;  double because of cell size two bytes
+.5ca4	18		clc		                clc
+.5ca5	65 22		adc $22		                adc tmpdsp
+.5ca7	aa		tax		                tax
+.5ca8	b5 00		lda $00,x	                lda $00,x ;  LDA $00,X
+.5caa	a8		tay		                tay ;  Is now TOS
+.5cab	a6 22		ldx $22		                ldx tmpdsp
+.5cad	60		rts		z_pick          rts
+.5cae					xt_plusstore
+.5cae	b9 00 00	lda $0000,y	                lda $0000,y
+.5cb1	18		clc		                clc
+.5cb2	75 00		adc $00,x	                adc $00,x
+.5cb4	99 00 00	sta $0000,y	                sta $0000,y
+.5cb7	b4 02		ldy $02,x	                ldy $02,x
+.5cb9	e8		inx		                inx
+.5cba	e8		inx		                inx
+.5cbb	e8		inx		                inx
+.5cbc	e8		inx		                inx
+.5cbd	60		rts		z_plusstore     rts
+.5cbe					xt_postpone
+.5cbe	20 39 5c	jsr $5c39	                jsr xt_parse_name ;  ( addr n )
+.5cc1	d0 06		bne $5cc9	                bne pp_got_word
+.5cc3	a9 0d 72	lda #$720d	                lda #es_noname
+.5cc6	4c 36 6a	jmp $6a36	                jmp error
+.5cc9					pp_got_word
+.5cc9	20 4a 59	jsr $594a	                jsr xt_find_name ;  ( nt | 0 )
+.5ccc	d0 03		bne $5cd1	                bne pp_got_nt
+.5cce	a9 aa 72	lda #$72aa	                lda #es_syntax
+.5cd1					pp_got_nt
+.5cd1	84 1c		sty $1c		                sty tmp1
+.5cd3	20 51 5b	jsr $5b51	                jsr xt_name_int ;  NAME>INT ( nt -- xt )
+.5cd6	b2 1c		lda ($1c)	                lda (tmp1) ;  LDA (TMP1) - get status byte of word
+.5cd8	eb		xba		                xba ;  flags are MSB
+.5cd9	29 04 00	and #$0004	                and #IM ;  mask everything but Immediate bit
+.5cdc	f0 04		beq $5ce2	                beq pp_not_immediate
+.5cde	20 4f 56	jsr $564f	                jsr xt_compilecomma
+.5ce1	60		rts		                rts
+.5ce2					pp_not_immediate
+.5ce2	f4 ac 5a	pea #$5aac	                pea literal_rt ;  PEA LITERAL_RT
+.5ce5	20 15 6a	jsr $6a15	                jsr cmpl_subroutine
+.5ce8	20 08 52	jsr $5208	                jsr xt_comma
+.5ceb	f4 4f 56	pea #$564f	                pea xt_compilecomma
+.5cee	20 15 6a	jsr $6a15	                jsr cmpl_subroutine
+.5cf1	60		rts		z_postpone      rts
+.5cf2					xt_rfetch
+.5cf2	68		pla		                pla
+.5cf3	ca		dex		                dex
+.5cf4	ca		dex		                dex
+.5cf5	94 00		sty $00,x	                sty $00,x
+.5cf7	7a		ply		                ply ;  get top of return stack and push copy back again
+.5cf8	5a		phy		                phy
+.5cf9	48		pha		                pha ;  restore the return address
+.5cfa	60		rts		z_rfetch        rts
+.5cfb					xt_fromr
+.5cfb	68		pla		                pla
+.5cfc	ca		dex		                dex
+.5cfd	ca		dex		                dex
+.5cfe	94 00		sty $00,x	                sty $00,x
+.5d00	7a		ply		                ply ;  the actual work
+.5d01	48		pha		                pha ;  get return address back
+.5d02	60		rts		z_fromr         rts
+.5d03					xt_recurse
+.5d03	a9 20 00	lda #$0020	                lda #$0020
+.5d06	92 00		sta ($00)	                sta (cp)
+.5d08	e6 00		inc $00		                inc cp
+.5d0a	a5 04		lda $04		                lda workword
+.5d0c	1a		inc a		                inc a
+.5d0d	1a		inc a		                inc a
+.5d0e	1a		inc a		                inc a
+.5d0f	1a		inc a		                inc a
+.5d10	5a		phy		                phy
+.5d11	a8		tay		                tay
+.5d12	b9 00 00	lda $0000,y	                lda $0000,y
+.5d15	7a		ply		                ply
+.5d16	92 00		sta ($00)	                sta (cp)
+.5d18	e6 00		inc $00		                inc cp
+.5d1a	e6 00		inc $00		                inc cp
+.5d1c	60		rts		z_recurse       rts
+.5d1d					xt_refill
+.5d1d	a5 06		lda $06		                lda insrc
+.5d1f	d0 15		bne $5d36	                bne refill_src_not_kbd
+.5d21	ca		dex		                dex
+.5d22	ca		dex		                dex
+.5d23	ca		dex		                dex
+.5d24	ca		dex		                dex
+.5d25	94 02		sty $02,x	                sty $02,x
+.5d27	a5 08		lda $08		                lda cib ;  address of current input buffer NOS
+.5d29	95 00		sta $00,x	                sta $00,x
+.5d2b	a0 80 00	ldy #$0080	                ldy #bsize ;  max number of chars to accept TOS
+.5d2e	20 80 54	jsr $5480	                jsr xt_accept ;  ( addr n1 -- n2)
+.5d31	a0 ff ff	ldy #$ffff	                ldy #$0ffff
+.5d34	80 10		bra $5d46	                bra z_refill
+.5d36					refill_src_not_kbd
+.5d36	1a		inc a		                inc a
+.5d37	d0 07		bne $5d40	                bne refill_source_is_not_string
+.5d39	ca		dex		                dex
+.5d3a	ca		dex		                dex
+.5d3b	94 00		sty $00,x	                sty $00,x
+.5d3d	a8		tay		                tay
+.5d3e	80 06		bra $5d46	                bra z_refill
+.5d40					refill_source_is_not_string
+.5d40	a9 62 72	lda #$7262	                lda #es_refill2
+.5d43	4c 36 6a	jmp $6a36	                jmp error
+.5d46	60		rts		z_refill        rts ;  dummy for compiling
+.5d47					xt_rot
+.5d47	b5 00		lda $00,x	                lda $00,x ;  save b
+.5d49	94 00		sty $00,x	                sty $00,x ;  move c to NOS
+.5d4b	b4 02		ldy $02,x	                ldy $02,x ;  move a to TOS
+.5d4d	95 02		sta $02,x	                sta $02,x ;  save b as 3OS
+.5d4f	60		rts		z_rot           rts
+.5d50					xt_rshift
+.5d50	98		tya		                tya
+.5d51	29 0f 00	and #$000f	                and #$000f
+.5d54	f0 09		beq $5d5f	                beq rshift_done ;  if zero shifts, we're done
+.5d56	a8		tay		                tay ;  number of shifts is TOS
+.5d57	b5 00		lda $00,x	                lda $00,x ;  number is in NOS
+.5d59					rshift_loop
+.5d59	4a		lsr a		                lsr a
+.5d5a	88		dey		                dey
+.5d5b	d0 fc		bne $5d59	                bne rshift_loop
+.5d5d	95 00		sta $00,x	                sta $00,x ;  put NOS, which last step will pull up
+.5d5f					rshift_done
+.5d5f	b4 00		ldy $00,x	                ldy $00,x
+.5d61	e8		inx		                inx
+.5d62	e8		inx		                inx
+.5d63	60		rts		z_rshift        rts
+.5d64					xt_squote
+.5d64	ca		dex		                dex
+.5d65	ca		dex		                dex
+.5d66	94 00		sty $00,x	                sty $00,x
+.5d68	a0 22 00	ldy #$0022	                ldy #$0022 ;  ASCII for " in hex
+.5d6b	20 6d 5c	jsr $5c6d	                jsr xt_parse ;  Returns ( addr u ) of string
+.5d6e	a5 14		lda $14		                lda state
+.5d70	d0 24		bne $5d96	                bne squote_compile
+.5d72	ca		dex		                dex
+.5d73	ca		dex		                dex
+.5d74	94 00		sty $00,x	                sty $00,x
+.5d76	a4 00		ldy $00		                ldy cp ;  HERE  ( addr-s u addr-d )
+.5d78	b5 00		lda $00,x	                lda $00,x ;  SWAP ( addr-s addr-d u )
+.5d7a	94 00		sty $00,x	                sty $00,x
+.5d7c	a8		tay		                tay
+.5d7d	5a		phy		                phy ;  save copy of u
+.5d7e	b5 00		lda $00,x	                lda $00,x ;  save copy of addr-d
+.5d80	48		pha		                pha
+.5d81	20 3d 5b	jsr $5b3d	                jsr xt_move
+.5d84	ca		dex		                dex
+.5d85	ca		dex		                dex
+.5d86	ca		dex		                dex
+.5d87	ca		dex		                dex
+.5d88	94 02		sty $02,x	                sty $02,x
+.5d8a	68		pla		                pla ;  get addr-d back
+.5d8b	95 00		sta $00,x	                sta $00,x ;  put NOS
+.5d8d	68		pla		                pla ;  get u back, put TOS
+.5d8e	a8		tay		                tay
+.5d8f	18		clc		                clc
+.5d90	65 00		adc $00		                adc cp
+.5d92	85 00		sta $00		                sta cp
+.5d94	80 03		bra $5d99	                bra z_squote
+.5d96					squote_compile
+.5d96	20 ba 5d	jsr $5dba	                jsr xt_sliteral
+.5d99	60		rts		z_squote        rts
+.5d9a					xt_stod
+.5d9a	ca		dex		                dex ;  make room on stack
+.5d9b	ca		dex		                dex
+.5d9c	94 00		sty $00,x	                sty $00,x
+.5d9e	98		tya		                tya ;  force flag check
+.5d9f	10 05		bpl $5da6	                bpl stod_pos
+.5da1	a0 ff ff	ldy #$ffff	                ldy #$0ffff
+.5da4	80 03		bra $5da9	                bra z_stod
+.5da6					stod_pos
+.5da6	a0 00 00	ldy #$0000	                ldy #$0000 ;  fall through
+.5da9	60		rts		z_stod          rts
+.5daa					xt_sign
+.5daa	98		tya		                tya ;  force flag check
+.5dab	10 08		bpl $5db5	                bpl sign_plus
+.5dad	a0 2d 00	ldy #$002d	                ldy #$002d ;  ASCII for '-'
+.5db0	20 66 5a	jsr $5a66	                jsr xt_hold
+.5db3	80 04		bra $5db9	                bra z_sign
+.5db5					sign_plus
+.5db5	b4 00		ldy $00,x	                ldy $00,x ;  get rid of number and leave
+.5db7	e8		inx		                inx
+.5db8	e8		inx		                inx
+.5db9	60		rts		z_sign          rts
+.5dba					xt_sliteral
+.5dba	b5 00		lda $00,x	                lda $00,x ;  Address of string is NOS
+.5dbc	85 1c		sta $1c		                sta tmp1
+.5dbe	84 1e		sty $1e		                sty tmp2 ;  keep copy of string length
+.5dc0	e2 20		sep #$20	                SEP #$20        ; set A short
+.5dc2	a9 4c		lda #$4c	                lda #$04c ;  opcode for JMP
+.5dc4	92 00		sta ($00)	                sta (cp) ;  STA (CP)
+.5dc6	c2 20		rep #$20	                REP #$20        ; set A long
+.5dc8	e6 00		inc $00		                inc cp
+.5dca	a5 1e		lda $1e		                lda tmp2 ;  string length
+.5dcc	1a		inc a		                inc a
+.5dcd	1a		inc a		                inc a
+.5dce	18		clc		                clc
+.5dcf	65 00		adc $00		                adc cp ;  current address
+.5dd1	92 00		sta ($00)	                sta (cp) ;  store jump target
+.5dd3	e6 00		inc $00		                inc cp
+.5dd5	e6 00		inc $00		                inc cp
+.5dd7	88		dey		                dey ;  last offset is one less than length
+.5dd8	e2 20		sep #$20	                SEP #$20        ; set A short
+.5dda					sl_loop
+.5dda	b1 1c		lda ($1c),y	                lda (tmp1),y ;  LDA (TMP1),Y
+.5ddc	91 00		sta ($00),y	                sta (cp),y ;  STA (CP),Y
+.5dde	88		dey		                dey
+.5ddf	10 f9		bpl $5dda	                bpl sl_loop
+.5de1	c2 20		rep #$20	                REP #$20        ; set A long
+.5de3	a5 00		lda $00		                lda cp
+.5de5	85 1c		sta $1c		                sta tmp1 ;  overwrites original address
+.5de7	18		clc		                clc
+.5de8	65 1e		adc $1e		                adc tmp2 ;  length of string
+.5dea	85 00		sta $00		                sta cp
+.5dec	f4 05 5e	pea #$5e05	                pea sliteral_rt
+.5def	20 15 6a	jsr $6a15	                jsr cmpl_subroutine
+.5df2	a5 1c		lda $1c		                lda tmp1 ;  new address of string
+.5df4	48		pha		                pha
+.5df5	20 10 6a	jsr $6a10	                jsr cmpl_word
+.5df8	a5 1e		lda $1e		                lda tmp2
+.5dfa	48		pha		                pha
+.5dfb	20 10 6a	jsr $6a10	                jsr cmpl_word
+.5dfe	b4 02		ldy $02,x	                ldy $02,x ;  2DROP
+.5e00	e8		inx		                inx
+.5e01	e8		inx		                inx
+.5e02	e8		inx		                inx
+.5e03	e8		inx		                inx
+.5e04	60		rts		z_sliteral      rts
+.5e05					sliteral_rt
+.5e05	ca		dex		                dex
+.5e06	ca		dex		                dex
+.5e07	ca		dex		                dex
+.5e08	ca		dex		                dex
+.5e09	94 02		sty $02,x	                sty $02,x
+.5e0b	7a		ply		                ply
+.5e0c	c8		iny		                iny
+.5e0d	b9 00 00	lda $0000,y	                lda $0000,y ;  LDA $0000,Y
+.5e10	95 00		sta $00,x	                sta $00,x ;  save string address as NOS
+.5e12	c8		iny		                iny
+.5e13	c8		iny		                iny
+.5e14	b9 00 00	lda $0000,y	                lda $0000,y ;  get length of string, will be TOS ...
+.5e17	c8		iny		                iny ;  ... first, though, repair return jump
+.5e18	5a		phy		                phy
+.5e19	a8		tay		                tay ;  TOS is now length of string
+.5e1a	60		rts		                rts
+.5e1b					xt_smrem
+.5e1b	20 19 5c	jsr $5c19	                jsr xt_over
+.5e1e	5a		phy		                phy		; >R
+.5e1f	b4 00		ldy $00,x	                ldy $00,x
+.5e21	e8		inx		                inx
+.5e22	e8		inx		                inx
+.5e23	ca		dex		                dex ;  DUP
+.5e24	ca		dex		                dex
+.5e25	94 00		sty $00,x	                sty $00,x
+.5e27	5a		phy		                phy ;  >R
+.5e28	b4 00		ldy $00,x	                ldy $00,x
+.5e2a	e8		inx		                inx
+.5e2b	e8		inx		                inx
+.5e2c	20 77 54	jsr $5477	                jsr xt_abs ;  ABS
+.5e2f	20 32 53	jsr $5332	                jsr xt_mrot ;  -ROT
+.5e32	20 1a 58	jsr $581a	                jsr xt_dabs ;  DABS
+.5e35	20 47 5d	jsr $5d47	                jsr xt_rot ;  ROT
+.5e38	20 77 5f	jsr $5f77	                jsr xt_ummod ;  UM/MOD
+.5e3b	ca		dex		                dex ;  R>
+.5e3c	ca		dex		                dex
+.5e3d	94 00		sty $00,x	                sty $00,x
+.5e3f	7a		ply		                ply
+.5e40	ca		dex		                dex ;  R@
+.5e41	ca		dex		                dex
+.5e42	94 00		sty $00,x	                sty $00,x
+.5e44	7a		ply		                ply
+.5e45	5a		phy		                phy
+.5e46	20 58 60	jsr $6058	                jsr xt_xor ;  XOR
+.5e49	98		tya		                tya ;  0< IF
+.5e4a	10 09		bpl $5e55	                bpl smrem_1
+.5e4c	b4 00		ldy $00,x	                ldy $00,x ;  from IF
+.5e4e	e8		inx		                inx
+.5e4f	e8		inx		                inx
+.5e50	20 73 5b	jsr $5b73	                jsr xt_negate ;  NEGATE
+.5e53	80 04		bra $5e59	                bra smrem_1_1
+.5e55					smrem_1
+.5e55	b4 00		ldy $00,x	                ldy $00,x ;  from IF
+.5e57	e8		inx		                inx
+.5e58	e8		inx		                inx
+.5e59					smrem_1_1
+.5e59	ca		dex		                dex ;  R>
+.5e5a	ca		dex		                dex
+.5e5b	94 00		sty $00,x	                sty $00,x
+.5e5d	7a		ply		                ply
+.5e5e	98		tya		                tya ;  0< IF
+.5e5f	10 0f		bpl $5e70	                bpl smrem_2
+.5e61	b4 00		ldy $00,x	                ldy $00,x ;  from IF
+.5e63	e8		inx		                inx
+.5e64	e8		inx		                inx
+.5e65	20 b0 5e	jsr $5eb0	                jsr xt_swap
+.5e68	20 73 5b	jsr $5b73	                jsr xt_negate
+.5e6b	20 b0 5e	jsr $5eb0	                jsr xt_swap
+.5e6e	80 04		bra $5e74	                bra smrem_2_1
+.5e70					smrem_2
+.5e70	b4 00		ldy $00,x	                ldy $00,x
+.5e72	e8		inx		                inx
+.5e73	e8		inx		                inx
+.5e74					smrem_2_1
+.5e74	60		rts		z_smrem         rts
+.5e75					xt_source
+.5e75	ca		dex		                dex ;  make room on Data Stack
+.5e76	ca		dex		                dex
+.5e77	ca		dex		                dex
+.5e78	ca		dex		                dex
+.5e79	94 02		sty $02,x	                sty $02,x
+.5e7b	a5 08		lda $08		                lda cib ;  address of current input buffer as NOS
+.5e7d	95 00		sta $00,x	                sta $00,x
+.5e7f	a4 0a		ldy $0a		                ldy ciblen ;  length of current input buffer as TOS
+.5e81	60		rts		z_source        rts
+.5e82					xt_source_id
+.5e82	ca		dex		                dex
+.5e83	ca		dex		                dex
+.5e84	94 00		sty $00,x	                sty $00,x
+.5e86	a4 06		ldy $06		                ldy insrc
+.5e88	60		rts		z_source_id     rts
+.5e89					xt_space
+.5e89	a9 20 00	lda #$0020	                lda #AscSP
+.5e8c	20 b7 58	jsr $58b7	                jsr emit_a
+.5e8f	60		rts		z_space         rts
+.5e90					xt_spaces
+.5e90					spaces_loop
+.5e90	88		dey		                dey ;  this also handles case u=0
+.5e91	30 08		bmi $5e9b	                bmi spaces_done
+.5e93	a9 20 00	lda #$0020	                lda #$0020
+.5e96	20 b7 58	jsr $58b7	                jsr emit_a
+.5e99	80 f5		bra $5e90	                bra spaces_loop
+.5e9b					spaces_done
+.5e9b	b4 00		ldy $00,x	                ldy $00,x ;  DROP
+.5e9d	e8		inx		                inx
+.5e9e	e8		inx		                inx
+.5e9f	60		rts		z_spaces        rts
+.5ea0					xt_star
+.5ea0	20 18 5f	jsr $5f18	                jsr xt_umstar
+.5ea3	b4 00		ldy $00,x	                ldy $00,x ;  DROP
+.5ea5	e8		inx		                inx
+.5ea6	e8		inx		                inx
+.5ea7	60		rts		z_star          rts
+.5ea8					xt_state
+.5ea8	ca		dex		                dex
+.5ea9	ca		dex		                dex
+.5eaa	94 00		sty $00,x	                sty $00,x
+.5eac	a0 14 00	ldy #$0014	                ldy #state
+.5eaf	60		rts		z_state         rts
+.5eb0					xt_swap
+.5eb0	b5 00		lda $00,x	                lda $00,x
+.5eb2	94 00		sty $00,x	                sty $00,x
+.5eb4	a8		tay		                tay
+.5eb5	60		rts		z_swap          rts
+.5eb6					xt_to
+.5eb6	20 3e 54	jsr $543e	                jsr xt_tick ;  '
+.5eb9	20 fa 50	jsr $50fa	                jsr xt_tobody ;  >BODY
+.5ebc	20 91 52	jsr $5291	                jsr xt_store ;  !
+.5ebf	60		rts		z_to            rts
+.5ec0					xt_true
+.5ec0	ca		dex		                dex
+.5ec1	ca		dex		                dex
+.5ec2	94 00		sty $00,x	                sty $00,x
+.5ec4	a0 ff ff	ldy #$ffff	                ldy #$0ffff
+.5ec7	60		rts		z_true          rts
+.5ec8					xt_tuck
+.5ec8	ca		dex		                dex
+.5ec9	ca		dex		                dex
+.5eca	b5 02		lda $02,x	                lda $2,x
+.5ecc	95 00		sta $00,x	                sta $0,x
+.5ece	94 02		sty $02,x	                sty $2,x
+.5ed0	60		rts		z_tuck          rts
+.5ed1					xt_type
+.5ed1	98		tya		                tya ;  force flag check of TOS
+.5ed2	f0 17		beq $5eeb	                beq type_done
+.5ed4	b5 00		lda $00,x	                lda $00,x ;  get address from NOS
+.5ed6	85 1c		sta $1c		                sta tmp1
+.5ed8	84 1e		sty $1e		                sty tmp2 ;  number of chars is TOS
+.5eda	a0 00 00	ldy #$0000	                ldy #$0000
+.5edd	e2 20		sep #$20	                SEP #$20        ; set A short
+.5edf					type_loop
+.5edf	b1 1c		lda ($1c),y	                lda (tmp1),y ;  LDA (TMP1),Y
+.5ee1	20 b7 58	jsr $58b7	                jsr emit_a
+.5ee4	c8		iny		                iny
+.5ee5	c4 1e		cpy $1e		                cpy tmp2
+.5ee7	d0 f6		bne $5edf	                bne type_loop
+.5ee9	c2 20		rep #$20	                REP #$20        ; set A long
+.5eeb					type_done
+.5eeb	b4 02		ldy $02,x	                ldy $02,x
+.5eed	e8		inx		                inx
+.5eee	e8		inx		                inx
+.5eef	e8		inx		                inx
+.5ef0	e8		inx		                inx
+.5ef1	60		rts		z_type          rts
+.5ef2					xt_udot
+.5ef2	20 54 6a	jsr $6a54	                jsr print_u ;  ( n -- )
+.5ef5	a9 20 00	lda #$0020	                lda #$0020 ;  SPACE
+.5ef8	20 b7 58	jsr $58b7	                jsr emit_a
+.5efb	60		rts		z_udot          rts
+.5efc					xt_udmod
+.5efc	20 83 51	jsr $5183	                jsr xt_tor
+.5eff	20 5e 53	jsr $535e	                jsr xt_zero
+.5f02	20 f2 5c	jsr $5cf2	                jsr xt_rfetch
+.5f05	20 77 5f	jsr $5f77	                jsr xt_ummod
+.5f08	20 47 5d	jsr $5d47	                jsr xt_rot
+.5f0b	20 47 5d	jsr $5d47	                jsr xt_rot
+.5f0e	20 fb 5c	jsr $5cfb	                jsr xt_fromr
+.5f11	20 77 5f	jsr $5f77	                jsr xt_ummod
+.5f14	20 47 5d	jsr $5d47	                jsr xt_rot
+.5f17	60		rts		z_udmod         rts
+.5f18					xt_umstar
+.5f18	98		tya		                tya
+.5f19	f0 3d		beq $5f58	                beq umstar_zero
+.5f1b	b5 00		lda $00,x	                lda $00,x
+.5f1d	f0 39		beq $5f58	                beq umstar_zero
+.5f1f	c0 01 00	cpy #$0001	                cpy #$0001 ;  non-distructively
+.5f22	f0 3b		beq $5f5f	                beq umstar_one_tos
+.5f24	b5 00		lda $00,x	                lda $00,x
+.5f26	3a		dec a		                dec a ;  don't care about distruction
+.5f27	f0 39		beq $5f62	                beq umstar_one_nos
+.5f29	c0 02 00	cpy #$0002	                cpy #$0002
+.5f2c	f0 3b		beq $5f69	                beq umstar_two_tos
+.5f2e	b5 00		lda $00,x	                lda $00,x
+.5f30	c9 02 00	cmp #$0002	                cmp #$0002
+.5f33	f0 38		beq $5f6d	                beq umstar_two_nos
+.5f35	84 1c		sty $1c		                sty tmp1 ;  TOS number  "40"
+.5f37	85 1e		sta $1e		                sta tmp2 ;  NOS number  "41"
+.5f39	a0 10 00	ldy #$0010	                ldy #16 ;  loop counter
+.5f3c	a9 00 00	lda #$0000	                lda #$0000
+.5f3f	85 20		sta $20		                sta tmp3 ;  Most Significat Word (MSW) of result
+.5f41					umstar_loop
+.5f41	0a		asl a		                asl a ;  useless for first iteration
+.5f42	26 20		rol $20		                rol tmp3 ;  move carry into MSB, useless first iteration
+.5f44	06 1e		asl $1e		                asl tmp2 ;  move bit of NOS number into carry
+.5f46	90 07		bcc $5f4f	                bcc umstar_counter
+.5f48	18		clc		                clc
+.5f49	65 1c		adc $1c		                adc tmp1 ;  we have a set bit, so add TOS
+.5f4b	90 02		bcc $5f4f	                bcc umstar_counter
+.5f4d	e6 20		inc $20		                inc tmp3
+.5f4f					umstar_counter
+.5f4f	88		dey		                dey
+.5f50	d0 ef		bne $5f41	                bne umstar_loop
+.5f52	95 00		sta $00,x	                sta $00,x ;  store lower cell of number in NOS
+.5f54	a4 20		ldy $20		                ldy tmp3 ;  store MSB in TOS as double cell
+.5f56	80 1e		bra $5f76	                bra z_umstar ;  don't use RTS so we can natively compile
+.5f58					umstar_zero
+.5f58	a0 00 00	ldy #$0000	                ldy #$0000
+.5f5b	94 00		sty $00,x	                sty $00,x
+.5f5d	80 17		bra $5f76	                bra z_umstar
+.5f5f					umstar_one_tos
+.5f5f	88		dey		                dey ;  NOS is LSW, TOS becomes zero
+.5f60	80 14		bra $5f76	                bra z_umstar
+.5f62					umstar_one_nos
+.5f62	94 00		sty $00,x	                sty $00,x
+.5f64	a0 00 00	ldy #$0000	                ldy #$0000
+.5f67	80 0d		bra $5f76	                bra z_umstar
+.5f69					umstar_two_tos
+.5f69	b5 00		lda $00,x	                lda $00,x
+.5f6b	80 01		bra $5f6e	                bra umstar_two_common
+.5f6d					umstar_two_nos
+.5f6d	98		tya		                tya
+.5f6e					umstar_two_common
+.5f6e	0a		asl a		                asl a ;  multiply by two, top bit in Carry Flag
+.5f6f	95 00		sta $00,x	                sta $00,x ;  Double Cell LSW is NOS
+.5f71	a9 00 00	lda #$0000	                lda #$0000
+.5f74	2a		rol a		                rol a ;  Rotate any Carry Flag into MSW
+.5f75	a8		tay		                tay
+.5f76	60		rts		z_umstar        rts
+.5f77					xt_ummod
+.5f77	98		tya		                tya ;  force flag test
+.5f78	d0 06		bne $5f80	                bne ummod_notzero
+.5f7a	a9 da 71	lda #$71da	                lda #es_divzero
+.5f7d	4c 36 6a	jmp $6a36	                jmp error
+.5f80					ummod_notzero
+.5f80	84 28		sty $28		                sty scratch ;  Y is now free
+.5f82	b5 00		lda $00,x	                lda $00,x ;  high cell of dividend
+.5f84	85 2a		sta $2a		                sta scratch+2
+.5f86	b5 02		lda $02,x	                lda $02,x ;  low cell of dividend
+.5f88	85 2c		sta $2c		                sta scratch+4
+.5f8a	e8		inx		                inx
+.5f8b	e8		inx		                inx
+.5f8c	86 22		stx $22		                stx tmpdsp
+.5f8e	38		sec		                sec
+.5f8f	a5 2a		lda $2a		                lda scratch+2
+.5f91	e5 28		sbc $28		                sbc scratch
+.5f93	b0 21		bcs $5fb6	                bcs ummod_overflow
+.5f95	a2 11 00	ldx #$0011	                ldx #17
+.5f98					ummod_shift
+.5f98	26 2c		rol $2c		                rol scratch+4
+.5f9a	ca		dex		                dex
+.5f9b	f0 22		beq $5fbf	                beq ummod_complete
+.5f9d	26 2a		rol $2a		                rol scratch+2
+.5f9f	a9 00 00	lda #$0000	                lda #$0000
+.5fa2	2a		rol a		                rol a
+.5fa3	85 2e		sta $2e		                sta scratch+6 ;  store old high bit of dividend
+.5fa5	38		sec		                sec
+.5fa6	a5 2a		lda $2a		                lda scratch+2
+.5fa8	e5 28		sbc $28		                sbc scratch
+.5faa	a8		tay		                tay ;  save difference in Y until we know if we need it
+.5fab	a5 2e		lda $2e		                lda scratch+6
+.5fad	e9 00 00	sbc #$0000	                sbc #$0000
+.5fb0	90 e6		bcc $5f98	                bcc ummod_shift
+.5fb2	84 2a		sty $2a		                sty scratch+2
+.5fb4	80 e2		bra $5f98	                bra ummod_shift
+.5fb6					ummod_overflow
+.5fb6	a6 22		ldx $22		                ldx tmpdsp ;  restore DSP
+.5fb8	a0 ff ff	ldy #$ffff	                ldy #$0ffff
+.5fbb	94 00		sty $00,x	                sty $00,x
+.5fbd	80 08		bra $5fc7	                bra z_ummod ;  go to end to enable native coding
+.5fbf					ummod_complete
+.5fbf	a6 22		ldx $22		                ldx tmpdsp ;  restore DSP
+.5fc1	a4 2c		ldy $2c		                ldy scratch+4 ;  quotient is TOS
+.5fc3	a5 2a		lda $2a		                lda scratch+2 ;  remainder is NOS
+.5fc5	95 00		sta $00,x	                sta $00,x
+.5fc7	60		rts		z_ummod         rts
+.5fc8					xt_unloop
+.5fc8	68		pla		                pla
+.5fc9	68		pla		                pla
+.5fca	68		pla		                pla
+.5fcb	60		rts		z_unloop        rts
+.5fcc					xt_unused
+.5fcc	a9 ff 4f	lda #$4fff	                lda #cp_end
+.5fcf	38		sec		                sec
+.5fd0	e5 00		sbc $00		                sbc cp ;  current compile pointer
+.5fd2	ca		dex		                dex
+.5fd3	ca		dex		                dex
+.5fd4	94 00		sty $00,x	                sty $00,x
+.5fd6	a8		tay		                tay
+.5fd7	60		rts		z_unused        rts
+.5fd8					xt_variable
+.5fd8	20 27 57	jsr $5727	                jsr xt_create
+.5fdb	a9 00 00	lda #$0000	                lda #$0000
+.5fde	92 00		sta ($00)	                sta (cp) ;  STA (CP)
+.5fe0	e6 00		inc $00		                inc cp ;  direct COMMA
+.5fe2	e6 00		inc $00		                inc cp
+.5fe4	20 fc 56	jsr $56fc	                jsr adjust_z ;  adjust the z_ value by adding 2 bytes
+.5fe7	60		rts		z_variable      rts
+.5fe8					xt_word
+.5fe8	20 6d 5c	jsr $5c6d	                jsr xt_parse ;  ( addr u )
+.5feb	8c 80 02	sty $0280	                sty buffer1 ;  overwrite MSB
+.5fee	ca		dex		                dex
+.5fef	ca		dex		                dex ;  ( addr <?> u )
+.5ff0	a9 80 02	lda #$0280	                lda #buffer1
+.5ff3	1a		inc a		                inc a
+.5ff4	95 00		sta $00,x	                sta $00,x ;  ( addr buffer1+1 u )
+.5ff6	20 3d 5b	jsr $5b3d	                jsr xt_move
+.5ff9	ca		dex		                dex
+.5ffa	ca		dex		                dex
+.5ffb	94 00		sty $00,x	                sty $00,x
+.5ffd	a0 80 02	ldy #$0280	                ldy #buffer1
+.6000	60		rts		z_word          rts
+.6001					xt_wordsnsizes
+.6001	a9 ff ff	lda #$ffff	                lda #$0ffff
+.6004	85 20		sta $20		                sta tmp3 ;  set flag that we want sizes, too
+.6006	80 02		bra $600a	                bra words_common
+.6008					xt_words
+.6008	64 20		stz $20		                stz tmp3 ;  store flag that we don't want to print sizes
+.600a					words_common
+.600a	20 20 57	jsr $5720	                jsr xt_cr ;  start on next line, this is a style choice
+.600d	a5 02		lda $02		                lda dp ;  nt of first entry in Dictionary (last added)
+.600f	48		pha		                pha
+.6010	ca		dex		                dex ;  create room on TOS
+.6011	ca		dex		                dex
+.6012	94 00		sty $00,x	                sty $00,x
+.6014					words_loop
+.6014	a8		tay		                tay ;  ( nt )
+.6015	20 5a 5b	jsr $5b5a	                jsr xt_name_string ;  ( nt -- addr u )
+.6018	20 d1 5e	jsr $5ed1	                jsr xt_type
+.601b	20 89 5e	jsr $5e89	                jsr xt_space
+.601e	a5 20		lda $20		                lda tmp3
+.6020	f0 0f		beq $6031	                beq words_nosizes
+.6022	ca		dex		                dex
+.6023	ca		dex		                dex
+.6024	94 00		sty $00,x	                sty $00,x
+.6026	7a		ply		                ply ;  get nt back again
+.6027	5a		phy		                phy
+.6028	20 45 60	jsr $6045	                jsr xt_wordsize ;  ( u )
+.602b	20 9d 51	jsr $519d	                jsr xt_dot
+.602e	20 89 5e	jsr $5e89	                jsr xt_space
+.6031					words_nosizes
+.6031	68		pla		                pla ;  get back first entry in Dictionary
+.6032	1a		inc a		                inc a
+.6033	1a		inc a		                inc a
+.6034	ca		dex		                dex
+.6035	ca		dex		                dex
+.6036	94 00		sty $00,x	                sty $00,x
+.6038	a8		tay		                tay
+.6039	b9 00 00	lda $0000,y	                lda $0000,y ;  LDA $0000,Y
+.603c	48		pha		                pha
+.603d	d0 d5		bne $6014	                bne words_loop ;  zero entry signals end of Dictionary
+.603f	68		pla		                pla ;  balance MPU stack, value discarded
+.6040	b4 00		ldy $00,x	                ldy $00,x
+.6042	e8		inx		                inx
+.6043	e8		inx		                inx
+.6044					z_words
+.6044	60		rts		z_wordsnsizes   rts
+.6045					xt_wordsize
+.6045	c8		iny		                iny
+.6046	c8		iny		                iny
+.6047	c8		iny		                iny
+.6048	c8		iny		                iny ;  nt+4, location of xt
+.6049	b9 00 00	lda $0000,y	                lda $0000,y ;  get xt
+.604c	85 1e		sta $1e		                sta tmp2
+.604e	c8		iny		                iny
+.604f	c8		iny		                iny ;  nt+6, location of z_word
+.6050	b9 00 00	lda $0000,y	                lda $0000,y
+.6053	38		sec		                sec ;  (z_word - xt_word)
+.6054	e5 1e		sbc $1e		                sbc tmp2
+.6056	a8		tay		                tay
+.6057	60		rts		z_wordsize      rts
+.6058					xt_xor
+.6058	98		tya		                tya
+.6059	55 00		eor $00,x	                eor $00,x
+.605b	a8		tay		                tay
+.605c	e8		inx		                inx
+.605d	e8		inx		                inx
+.605e	60		rts		z_xor           rts
+
+;******  Processing file: headers.asm
+
+>605f	03				nt_bye          .byte 03     ; length of word string
+>6060	00				        .byte 00     ; status byte
+>6061	00 00				        .word 0000   ; next word in dictionary, 0000 signals end
+>6063	bc 55				        .word xt_bye ; start of code, the xt of this word
+>6065	c3 55				        .word z_bye  ; end of code (points to RTS)
+>6067	62 79 65			        .text "bye"  ; word name, always lower case
+>606a	04 00				nt_cold         .byte 4, 00
+>606c	5f 60 27 50 bc 50		        .word nt_bye, xt_cold, z_cold
+>6072	63 6f 6c 64			        .text "cold"
+>6076	04 00				nt_word         .byte 4, 00
+>6078	6a 60 e8 5f 00 60		        .word nt_cold, xt_word, z_word
+>607e	77 6f 72 64			        .text "word"
+>6082	04 00				nt_find         .byte 4, 00
+>6084	76 60 19 59 49 59		        .word nt_word, xt_find, z_find
+>608a	66 69 6e 64			        .text "find"
+>608e	07 00				nt_aligned      .byte 7, 00
+>6090	82 60 27 55 28 55		        .word nt_find, xt_aligned, z_aligned
+>6096	61 6c 69 67 6e 65 64		        .text "aligned"
+>609d	05 00				nt_align        .byte 5, 00
+>609f	8e 60 25 55 26 55		        .word nt_aligned, xt_align, z_align
+>60a5	61 6c 69 67 6e			        .text "align"
+>60aa	0b 00				nt_wordsnsizes  .byte $0b, 00
+>60ac	9d 60 01 60 44 60		        .word nt_align, xt_wordsnsizes, z_wordsnsizes
+>60b2	77 6f 72 64 73 26 73 69		        .text "words&sizes"
+>60ba	7a 65 73
+>60bd	05 00				nt_words        .byte 5, 00
+>60bf	aa 60 08 60 44 60		        .word nt_wordsnsizes, xt_words, z_words
+>60c5	77 6f 72 64 73			        .text "words"
+>60ca	06 01				nt_unloop       .byte 6, CO
+>60cc	bd 60 c8 5f cb 5f		        .word nt_words, xt_unloop, z_unloop
+>60d2	75 6e 6c 6f 6f 70		        .text "unloop"
+>60d8	07 01				nt_pploop       .byte 7, CO
+>60da	ca 60 a2 52 b0 52		        .word nt_unloop, xt_pploop, z_pploop
+>60e0	28 2b 6c 6f 6f 70 29		        .text "(+loop)"
+>60e7	05 05				nt_ploop        .byte 5, IM+CO
+>60e9	d8 60 05 53 26 53		        .word nt_pploop, xt_ploop, z_ploop
+>60ef	2b 6c 6f 6f 70			        .text "+loop"
+>60f4	04 05				nt_loop         .byte 4, IM+CO
+>60f6	e7 60 ff 52 26 53		        .word nt_ploop, xt_loop, z_loop
+>60fc	6c 6f 6f 70			        .text "loop"
+>6100	05 01				nt_leave        .byte 5, CO
+>6102	f4 60 97 5a 9a 5a		        .word nt_loop, xt_leave, z_leave
+>6108	6c 65 61 76 65			        .text "leave"
+>610d	04 01				nt_exit         .byte 4, CO
+>610f	00 61 c1 58 c2 58		        .word nt_leave, xt_exit, z_exit
+>6115	65 78 69 74			        .text "exit"
+>6119	07 05				nt_recurse      .byte 7, IM+CO
+>611b	0d 61 03 5d 1c 5d		        .word nt_exit, xt_recurse, z_recurse
+>6121	72 65 63 75 72 73 65		        .text "recurse"
+>6128	01 01				nt_j            .byte 1, CO
+>612a	19 61 74 5a 7e 5a		        .word nt_recurse, xt_j, z_j
+>6130	6a				        .byte 'j'
+>6131	01 01				nt_i            .byte 1, CO
+>6133	28 61 13 5a 1d 5a		        .word nt_j, xt_i, z_i
+>6139	69				        .byte 'i'
+>613a	05 03				nt_pqdo         .byte 5, CO+AN
+>613c	31 61 b1 52 da 52		        .word nt_i, xt_pqdo, z_pqdo
+>6142	28 3f 64 6f 29			        .text "(?do)"
+>6147	04 03				nt_pdo          .byte 4, CO+AN
+>6149	3a 61 c8 52 da 52		        .word nt_pqdo, xt_pdo, z_pdo
+>614f	28 64 6f 29			        .text "(do)"
+>6153	03 05				nt_qdo          .byte 3, IM+CO	; may not be Native Compile
+>6155	47 61 4a 58 84 58		        .word nt_pdo, xt_qdo, z_qdo
+>615b	3f 64 6f			        .text "?do"
+>615e	02 05				nt_do           .byte 2, IM+CO	; may not be Native Compile
+>6160	53 61 51 58 84 58		        .word nt_qdo, xt_do, z_do
+>6166	64 6f				        .text "do"
+>6168	06 04				nt_marker       .byte 6, IM
+>616a	5e 61 ed 5a 16 5b		        .word nt_do, xt_marker, z_marker
+>6170	6d 61 72 6b 65 72		        .text "marker"
+>6176	08 00				nt_wordsize     .byte 8, 00
+>6178	68 61 45 60 57 60		        .word nt_marker, xt_wordsize, z_wordsize
+>617e	77 6f 72 64 73 69 7a 65		        .text "wordsize"
+>6186	04 00				nt_pick         .byte 4, 00
+>6188	76 61 a0 5c ad 5c		        .word nt_wordsize, xt_pick, z_pick
+>618e	70 69 63 6b			        .text "pick"
+>6192	04 00				nt_bell         .byte 4, 00
+>6194	86 61 89 55 8f 55		        .word nt_pick, xt_bell, z_bell
+>619a	62 65 6c 6c			        .text "bell"
+>619e	05 00				nt_chars        .byte 5, 00
+>61a0	92 61 08 56 09 56		        .word nt_bell, xt_chars, z_chars
+>61a6	63 68 61 72 73			        .text "chars"
+>61ab	05 00				nt_cellplus     .byte 5, 00
+>61ad	9e 61 ed 55 ef 55		        .word nt_chars, xt_cellplus, z_cellplus
+>61b3	63 65 6c 6c 2b			        .text "cell+"
+>61b8	05 00				nt_charplus     .byte 5, 00    	; uses code of 1+
+>61ba	ab 61 bd 53 be 53		        .word nt_cellplus, xt_one_plus, z_one_plus
+>61c0	63 68 61 72 2b			        .text "char+"
+>61c5	07 00				nt_decimal      .byte 7, 00
+>61c7	b8 61 21 58 26 58		        .word nt_charplus, xt_decimal, z_decimal
+>61cd	64 65 63 69 6d 61 6c		        .text "decimal"
+>61d4	03 00				nt_hex          .byte 3, 00
+>61d6	c5 61 60 5a 65 5a		        .word nt_decimal, xt_hex, z_hex
+>61dc	68 65 78			        .text "hex"
+>61df	06 00				nt_unused       .byte 6, 00
+>61e1	d4 61 cc 5f d7 5f		        .word nt_hex, xt_unused, z_unused
+>61e7	75 6e 75 73 65 64		        .text "unused"
+>61ed	04 00				nt_page         .byte 4, 00
+>61ef	df 61 2c 5c 38 5c		        .word nt_unused, xt_page, z_page
+>61f5	70 61 67 65			        .text "page"
+>61f9	05 00				nt_at_xy        .byte 5, 00
+>61fb	ed 61 59 55 80 55		        .word nt_page, xt_at_xy, z_at_xy
+>6201	61 74 2d 78 79			        .text "at-xy"
+>6206	03 08				nt_tworfetch    .byte 3, NN	; not natively compiled (yet)
+>6208	f9 61 0c 54 19 54		        .word nt_at_xy, xt_tworfetch, z_tworfetch
+>620e	32 72 40			        .text "2r@"
+>6211	09 00				nt_2variable    .byte 9, 00
+>6213	06 62 2b 54 3d 54		        .word nt_tworfetch, xt_2variable, z_2variable
+>6219	32 76 61 72 69 61 62 6c		        .text "2variable"
+>6221	65
+>6222	04 00				nt_dabs         .byte 4, 00
+>6224	11 62 1a 58 20 58		        .word nt_2variable, xt_dabs, z_dabs
+>622a	64 61 62 73			        .text "dabs"
+>622e	07 00				nt_dnegate      .byte 7, 00
+>6230	22 62 36 58 49 58		        .word nt_dabs, xt_dnegate, z_dnegate
+>6236	64 6e 65 67 61 74 65		        .text "dnegate"
+>623d	03 00				nt_dtos         .byte 3, 00
+>623f	2e 62 15 58 19 58		        .word nt_dnegate, xt_dtos, z_dtos
+>6245	64 3e 73			        .text "d>s"
+>6248	03 00				nt_stod         .byte 3, 00
+>624a	3d 62 9a 5d a9 5d		        .word nt_dtos, xt_stod, z_stod
+>6250	73 3e 64			        .text "s>d"
+>6253	03 01				nt_twofromr     .byte 3, CO                 ; NC is special case
+>6255	48 62 fb 53 0b 54		        .word nt_stod, xt_twofromr, z_twofromr
+>625b	32 72 3e			        .text "2r>"
+>625e	03 01				nt_twotor       .byte 3, CO                   ; NC is special case
+>6260	53 62 cb 53 db 53		        .word nt_twofromr, xt_twotor, z_twotor
+>6266	32 3e 72			        .text "2>r"
+>6269	02 00				nt_dminus       .byte 2, 00
+>626b	5e 62 00 58 14 58		        .word nt_twotor, xt_dminus, z_dminus
+>6271	64 2d				        .text "d-"
+>6273	02 00				nt_dplus        .byte 2, 00
+>6275	69 62 ee 57 ff 57		        .word nt_dminus, xt_dplus, z_dplus
+>627b	64 2b				        .text "d+"
+>627d	06 00				nt_fmmod        .byte 6, 00
+>627f	73 62 a1 59 f4 59		        .word nt_dplus, xt_fmmod, z_fmmod
+>6285	66 6d 2f 6d 6f 64		        .text "fm/mod"
+>628b	06 00				nt_smrem        .byte 6, 00
+>628d	7d 62 1b 5e 74 5e		        .word nt_fmmod, xt_smrem, z_smrem
+>6293	73 6d 2f 72 65 6d		        .text "sm/rem"
+>6299	06 00				nt_udmod        .byte 6, 00
+>629b	8b 62 fc 5e 17 5f		        .word nt_smrem, xt_udmod, z_udmod
+>62a1	75 64 2f 6d 6f 64		        .text "ud/mod"
+>62a7	06 00				nt_ummod        .byte 6, 00
+>62a9	99 62 77 5f c7 5f		        .word nt_udmod, xt_ummod, z_ummod
+>62af	75 6d 2f 6d 6f 64		        .text "um/mod"
+>62b5	01 00				nt_star         .byte 1, 00
+>62b7	a7 62 a0 5e a7 5e		        .word nt_ummod, xt_star, z_star
+>62bd	2a				        .byte '*'
+>62be	02 00				nt_mstar        .byte 2, 00
+>62c0	b5 62 cd 5a ec 5a		        .word nt_star, xt_mstar, z_mstar
+>62c6	6d 2a				        .text "m*"
+>62c8	03 00				nt_umstar       .byte 3, 00
+>62ca	be 62 18 5f 76 5f		        .word nt_mstar, xt_umstar, z_umstar
+>62d0	75 6d 2a			        .text "um*"
+>62d3	06 00				nt_cmoveup      .byte 6, 00
+>62d5	c8 62 2d 56 45 56		        .word nt_umstar, xt_cmoveup, z_cmoveup
+>62db	63 6d 6f 76 65 3e		        .text "cmove>"
+>62e1	05 00				nt_cmove        .byte 5, 00
+>62e3	d3 62 0a 56 2c 56		        .word nt_cmoveup, xt_cmove, z_cmove
+>62e9	63 6d 6f 76 65			        .text "cmove"
+>62ee	05 00				nt_count        .byte 5, 00
+>62f0	e1 62 12 57 1f 57		        .word nt_cmove, xt_count, z_count
+>62f6	63 6f 75 6e 74			        .text "count"
+>62fb	06 05				nt_abortq       .byte 6, CO+IM
+>62fd	ee 62 5a 54 76 54		        .word nt_count, xt_abortq, z_abortq
+>6303	61 62 6f 72 74 22		        .text "abort", 34	; ABORT"
+>6309	05 08				nt_abort        .byte 5, NN ; TODO check flags - NC possible?
+>630b	fb 62 75 50 bc 50		        .word nt_abortq, xt_abort, z_abort
+>6311	61 62 6f 72 74			        .text "abort"
+>6316	05 00				nt_parse        .byte 5, 00
+>6318	09 63 6d 5c 9f 5c		        .word nt_abort, xt_parse, z_parse
+>631e	70 61 72 73 65			        .text "parse"
+>6323	04 00				nt_quit         .byte 4, 00
+>6325	16 63 7d 50 bc 50		        .word nt_parse, xt_quit, z_quit
+>632b	71 75 69 74			        .text "quit"
+>632f	01 00				nt_question     .byte 1, 00
+>6331	23 63 82 52 88 52		        .word nt_quit, xt_question, z_question
+>6337	3f				        .byte '?'
+>6338	08 00				nt_int_name     .byte 8, 00
+>633a	2f 63 2f 5a 52 5a		        .word nt_question, xt_int_name, z_int_name
+>6340	69 6e 74 3e 6e 61 6d 65		        .text "int>name"
+>6348	08 00				nt_name_int     .byte 8, 00
+>634a	38 63 51 5b 59 5b		        .word nt_int_name, xt_name_int, z_name_int
+>6350	6e 61 6d 65 3e 69 6e 74		        .text "name>int"
+>6358	02 00				nt_cr           .byte 2, 00
+>635a	48 63 20 57 26 57		        .word nt_name_int, xt_cr, z_cr
+>6360	63 72				        .text "cr"
+>6362	04 00				nt_fill         .byte 4, 00
+>6364	58 63 c2 58 dc 58		        .word nt_cr, xt_fill, z_fill
+>636a	66 69 6c 6c			        .text "fill"
+>636e	05 00				nt_erase        .byte 5, 00
+>6370	62 63 ba 58 dc 58		        .word nt_fill, xt_erase, z_erase
+>6376	65 72 61 73 65			        .text "erase"
+>637b	02 00				nt_numbermore   .byte 2, 00 ; "quoth the rumben"
+>637d	6e 63 6a 52 78 52		        .word nt_erase, xt_numbermore, z_numbermore
+>6383	23 3e				        .text "#>"
+>6385	04 00				nt_hold         .byte 4, 00
+>6387	7b 63 66 5a 73 5a		        .word nt_numbermore, xt_hold, z_hold
+>638d	68 6f 6c 64			        .text "hold"
+>6391	02 00				nt_hashs        .byte 2, 00 ; also known as "number-s"
+>6393	85 63 79 52 81 52		        .word nt_hold, xt_hashs, z_hashs
+>6399	23 73				        .text "#s"
+>639b	04 00				nt_sign         .byte 4, 00
+>639d	91 63 aa 5d b9 5d		        .word nt_hashs, xt_sign, z_sign
+>63a3	73 69 67 6e			        .text "sign"
+>63a7	01 00				nt_hash         .byte 1, 00  ; also known as "number-sign"
+>63a9	9b 63 4f 52 69 52		        .word nt_sign, xt_hash, z_hash
+>63af	23				        .byte '#'
+>63b0	02 00				nt_lessnumber   .byte 2, 00
+>63b2	a7 63 dc 50 e5 50		        .word nt_hash, xt_lessnumber, z_lessnumber
+>63b8	3c 23				        .text "<#"
+>63ba	02 00				nt_bl           .byte 2, 00
+>63bc	b0 63 97 55 9e 55		        .word nt_lessnumber, xt_bl, z_bl
+>63c2	62 6c				        .text "bl"
+>63c4	06 00				nt_spaces       .byte 6, 00
+>63c6	ba 63 90 5e 9f 5e		        .word nt_bl, xt_spaces, z_spaces
+>63cc	73 70 61 63 65 73		        .text "spaces"
+>63d2	05 00				nt_space        .byte 5, 00
+>63d4	c4 63 89 5e 8f 5e		        .word nt_spaces, xt_space, z_space
+>63da	73 70 61 63 65			        .text "space"
+>63df	02 00				nt_dots         .byte 2, 00
+>63e1	d2 63 d0 51 07 52		        .word nt_space, xt_dots, z_dots
+>63e7	2e 73				        .text ".s"
+>63e9	04 00				nt_type         .byte 4, 00
+>63eb	df 63 d1 5e f1 5e		        .word nt_dots, xt_type, z_type
+>63f1	74 79 70 65			        .text "type"
+>63f5	02 00				nt_udot         .byte 2, 00
+>63f7	e9 63 f2 5e fb 5e		        .word nt_type, xt_udot, z_udot
+>63fd	75 2e				        .text "u."
+>63ff	04 00				nt_emit         .byte 4, 0      ; not native compile
+>6401	f5 63 b2 58 ba 58		        .word nt_udot, xt_emit, z_emit
+>6407	65 6d 69 74			        .text "emit"
+>640b	01 00				nt_dot          .byte 1, 00
+>640d	ff 63 9d 51 bb 51		        .word nt_emit, xt_dot, z_dot
+>6413	2e				        .byte '.'
+>6414	03 00				nt_pad          .byte 3, 00
+>6416	0b 64 20 5c 2b 5c		        .word nt_dot, xt_pad, z_pad
+>641c	70 61 64			        .text "pad"
+>641f	04 00				nt_base         .byte 4, 00
+>6421	14 64 81 55 88 55		        .word nt_pad, xt_base, z_base
+>6427	62 61 73 65			        .text "base"
+>642b	08 00				nt_nc_limit     .byte 8, 00
+>642d	1f 64 6b 5b 72 5b		        .word nt_base, xt_nc_limit, z_nc_limit
+>6433	6e 63 2d 6c 69 6d 69 74		        .text "nc-limit"
+>643b	05 00				nt_input        .byte 5, 00
+>643d	2b 64 27 5a 2e 5a		        .word nt_nc_limit, xt_input, z_input
+>6443	69 6e 70 75 74			        .text "input"
+>6448	06 00				nt_output       .byte 6, 00
+>644a	3b 64 11 5c 18 5c		        .word nt_input, xt_output, z_output
+>6450	6f 75 74 70 75 74		        .text "output"
+>6456	08 00				nt_evaluate     .byte 8, 00
+>6458	48 64 dd 58 0b 59		        .word nt_output, xt_evaluate, z_evaluate
+>645e	65 76 61 6c 75 61 74 65		        .text "evaluate"
+>6466	05 00				nt_cells        .byte 5, 00	; 2* because we have 16 bit stack
+>6468	56 64 c7 53 ca 53		        .word nt_evaluate, xt_two_star, z_two_star
+>646e	63 65 6c 6c 73			        .text "cells"
+>6473	02 05				nt_dotquote     .byte 2, CO+IM
+>6475	66 64 bc 51 cf 51		        .word nt_cells, xt_dotquote, z_dotquote
+>647b	2e 22				        .byte '.', 34
+>647d	02 04				nt_squote       .byte 2, IM       	; not CO, see source code
+>647f	73 64 64 5d 99 5d		        .word nt_dotquote, xt_squote, z_squote
+>6485	73 22				        .byte 's', 34
+>6487	08 05				nt_sliteral     .byte 8, IM+CO
+>6489	7d 64 ba 5d 04 5e		        .word nt_squote, xt_sliteral, z_sliteral
+>648f	73 6c 69 74 65 72 61 6c		        .text "sliteral"
+>6497	03 05				nt_brackettick  .byte 3, IM+CO
+>6499	87 64 db 52 e1 52		        .word nt_sliteral, xt_brackettick, z_brackettick
+>649f	5b 27 5d			        .text "[']"
+>64a2	06 05				nt_bracketchar  .byte 6, IM+CO
+>64a4	97 64 eb 52 f1 52		        .word nt_brackettick, xt_bracketchar, z_bracketchar
+>64aa	5b 63 68 61 72 5d		        .text "[char]"
+>64b0	07 05				nt_literal      .byte 7, IM+CO
+>64b2	a2 64 9a 5a ab 5a		        .word nt_bracketchar, xt_literal, z_literal
+>64b8	6c 69 74 65 72 61 6c		        .text "literal"
+>64bf	0d 00				nt_never_compile .byte $0d, 00
+>64c1	b0 64 7a 5b 82 5b		        .word nt_literal, xt_never_compile, z_never_compile
+>64c7	6e 65 76 65 72 2d 63 6f		        .text "never-compile"
+>64cf	6d 70 69 6c 65
+>64d4	0c 00				nt_compile_only .byte $0c, 00
+>64d6	bf 64 46 56 4e 56		        .word nt_never_compile, xt_compile_only, z_compile_only
+>64dc	63 6f 6d 70 69 6c 65 2d		        .text "compile-only"
+>64e4	6f 6e 6c 79
+>64e8	09 00				nt_immediate    .byte 9, 00
+>64ea	d4 64 1e 5a 26 5a		        .word nt_compile_only, xt_immediate, z_immediate
+>64f0	69 6d 6d 65 64 69 61 74		        .text "immediate"
+>64f8	65
+>64f9	08 05				nt_postpone     .byte 8, IM+CO
+>64fb	e8 64 be 5c f1 5c		        .word nt_immediate, xt_postpone, z_postpone
+>6501	70 6f 73 74 70 6f 6e 65		        .text "postpone"
+>6509	01 00				nt_rightbracket .byte 1, 00
+>650b	f9 64 e5 52 ea 52		        .word nt_postpone, xt_rightbracket, z_rightbracket
+>6511	5d				        .byte ']'
+>6512	01 05				nt_leftbracket  .byte 1, IM+CO
+>6514	09 65 e2 52 e4 52		        .word nt_rightbracket, xt_leftbracket, z_leftbracket
+>651a	5b				        .byte '['
+>651b	08 00				nt_latestnt     .byte 8, 00
+>651d	12 65 7f 5a 86 5a		        .word nt_leftbracket, xt_latestnt, z_latestnt
+>6523	6c 61 74 65 73 74 6e 74		        .text "latestnt"
+>652b	08 00				nt_latestxt     .byte 8, 00
+>652d	1b 65 87 5a 96 5a		        .word nt_latestnt, xt_latestxt, z_latestxt
+>6533	6c 61 74 65 73 74 78 74		        .text "latestxt"
+>653b	09 00				nt_dtrailing    .byte 9, 00
+>653d	2b 65 3b 53 51 53		        .word nt_latestxt, xt_dtrailing, z_dtrailing
+>6543	2d 74 72 61 69 6c 69 6e		        .text "-trailing"
+>654b	67
+>654c	07 00				nt_slashstring  .byte 7, 00
+>654e	3b 65 8b 51 9c 51		        .word nt_dtrailing, xt_slashstring, z_slashstring
+>6554	2f 73 74 72 69 6e 67		        .text "/string"
+>655b	07 0d				nt_zbranch      .byte 7, IM+CO + NN
+>655d	4c 65 95 53 9b 53		        .word nt_slashstring, xt_zbranch, z_zbranch
+>6563	30 62 72 61 6e 63 68		        .text "0branch"
+>656a	06 0d				nt_branch       .byte 6, IM+CO + NN
+>656c	5b 65 a8 55 ae 55		        .word nt_zbranch, xt_branch, z_branch
+>6572	62 72 61 6e 63 68		        .text "branch"
+>6578	05 05				nt_again        .byte 5, IM+CO
+>657a	6a 65 0f 55 24 55		        .word nt_branch, xt_again, z_again
+>6580	61 67 61 69 6e			        .text "again"
+>6585	05 05				nt_begin        .byte 5, IM+CO
+>6587	78 65 90 55 96 55		        .word nt_again, xt_begin, z_begin
+>658d	62 65 67 69 6e			        .text "begin"
+>6592	08 01				nt_compilecomma .byte $08, CO
+>6594	85 65 4f 56 e2 56		        .word nt_begin, xt_compilecomma, z_compilecomma
+>659a	63 6f 6d 70 69 6c 65 2c		        .text "compile,"
+>65a2	01 05				nt_semicolon    .byte 1, CO+IM
+>65a4	92 65 36 52 4e 52		        .word nt_compilecomma, xt_semicolon, z_semicolon
+>65aa	3b				        .byte ';'
+>65ab	01 00				nt_colon        .byte 1, 0
+>65ad	a2 65 14 52 35 52		        .word nt_semicolon, xt_colon, z_colon
+>65b3	3a				        .text ":"
+>65b4	05 00				nt_allot        .byte 5, 00
+>65b6	ab 65 29 55 51 55		        .word nt_colon, xt_allot, z_allot
+>65bc	61 6c 6c 6f 74			        .text "allot"
+>65c1	05 00				nt_defer        .byte 5, 00
+>65c3	b4 65 97 57 b1 57		        .word nt_allot, xt_defer, z_defer
+>65c9	64 65 66 65 72			        .text "defer"
+>65ce	05 00				nt_tobody       .byte 5, 00
+>65d0	c1 65 fa 50 1d 51		        .word nt_defer, xt_tobody, z_tobody
+>65d6	3e 62 6f 64 79			        .text ">body"
+>65db	05 05				nt_does         .byte 5, IM+CO
+>65dd	ce 65 85 58 91 58		        .word nt_tobody, xt_does, z_does
+>65e3	64 6f 65 73 3e			        .text "does>"
+>65e8	06 00				nt_create       .byte 6, 0
+>65ea	db 65 27 57 96 57		        .word nt_does, xt_create, z_create
+>65f0	63 72 65 61 74 65		        .text "create"
+>65f6	0b 00				nt_name_string  .byte $0b, 00
+>65f8	e8 65 5a 5b 6a 5b		        .word nt_create, xt_name_string, z_name_string
+>65fe	6e 61 6d 65 3e 73 74 72		        .text "name>string"
+>6606	69 6e 67
+>6609	04 00				nt_2dup         .byte 4, 00
+>660b	f6 65 e3 53 ed 53		        .word nt_name_string, xt_2dup, z_2dup
+>6611	32 64 75 70			        .text "2dup"
+>6615	03 00				nt_abs          .byte 3, 00
+>6617	09 66 77 54 7f 54		        .word nt_2dup, xt_abs, z_abs
+>661d	61 62 73			        .text "abs"
+>6620	05 00				nt_state        .byte 5, 00
+>6622	15 66 a8 5e af 5e		        .word nt_abs, xt_state, z_state
+>6628	73 74 61 74 65			        .text "state"
+>662d	03 00				nt_to_in        .byte 3, 00
+>662f	20 66 1e 51 25 51		        .word nt_state, xt_to_in, z_to_in
+>6635	3e 69 6e			        .text ">in"
+>6638	06 00				nt_source       .byte 6, 00
+>663a	2d 66 75 5e 81 5e		         .word nt_to_in, xt_source, z_source
+>6640	73 6f 75 72 63 65		         .text "source"
+>6646	05 00				nt_depth        .byte 5, 00
+>6648	38 66 27 58 35 58		        .word nt_source, xt_depth, z_depth
+>664e	64 65 70 74 68			        .text "depth"
+>6653	02 00				nt_to           .byte 2, 00
+>6655	46 66 b6 5e bf 5e		        .word nt_depth, xt_to, z_to
+>665b	74 6f				        .text "to"
+>665d	05 00				nt_value        .byte 5, 00  ; uses routines of CONSTANT
+>665f	53 66 e3 56 11 57		        .word nt_to, xt_constant, z_constant
+>6665	76 61 6c 75 65			        .text "value"
+>666a	08 00				nt_constant     .byte 8, 00
+>666c	5d 66 e3 56 11 57		        .word nt_value, xt_constant, z_constant
+>6672	63 6f 6e 73 74 61 6e 74		        .text "constant"
+>667a	08 00				nt_variable     .byte 8, 00
+>667c	6a 66 d8 5f e7 5f		        .word nt_constant, xt_variable, z_variable
+>6682	76 61 72 69 61 62 6c 65		        .text "variable"
+>668a	01 00				nt_tick         .byte 1, 00
+>668c	7a 66 3e 54 59 54		        .word nt_variable, xt_tick, z_tick
+>6692	27				        .byte $27	; hex for "'"
+>6693	04 00				nt_move         .byte 4, 00
+>6695	8a 66 3d 5b 50 5b		        .word nt_tick, xt_move, z_move
+>669b	6d 6f 76 65			        .text "move"
+>669f	03 00				nt_min          .byte 3, 00
+>66a1	93 66 2a 5b 3c 5b		        .word nt_move, xt_min, z_min
+>66a7	6d 69 6e			        .text "min"
+>66aa	03 00				nt_max          .byte 3, 00
+>66ac	9f 66 17 5b 29 5b		        .word nt_min, xt_max, z_max
+>66b2	6d 61 78			        .text "max"
+>66b5	06 00				nt_negate       .byte 6, 00
+>66b7	aa 66 73 5b 79 5b		        .word nt_max, xt_negate, z_negate
+>66bd	6e 65 67 61 74 65		        .text "negate"
+>66c3	06 00				nt_invert       .byte 6, 00
+>66c5	b5 66 53 5a 58 5a		        .word nt_negate, xt_invert, z_invert
+>66cb	69 6e 76 65 72 74		        .text "invert"
+>66d1	04 00				nt_char         .byte 4, 00
+>66d3	c3 66 f0 55 07 56		        .word nt_invert, xt_char, z_char
+>66d9	63 68 61 72			        .text "char"
+>66dd	06 00				nt_rshift       .byte 6, 00
+>66df	d1 66 50 5d 63 5d		        .word nt_char, xt_rshift, z_rshift
+>66e5	72 73 68 69 66 74		        .text "rshift"
+>66eb	03 00				nt_xor          .byte 3, 00
+>66ed	dd 66 58 60 5e 60		        .word nt_rshift, xt_xor, z_xor
+>66f3	78 6f 72			        .text "xor"
+>66f6	02 00				nt_or           .byte 2, 00
+>66f8	eb 66 0a 5c 10 5c		        .word nt_xor, xt_or, z_or
+>66fe	6f 72				        .text "or"
+>6700	03 00				nt_and          .byte 3, 00
+>6702	f6 66 52 55 58 55		        .word nt_or, xt_and, z_and
+>6708	61 6e 64			        .text "and"
+>670b	06 00				nt_lshift       .byte 6, 00
+>670d	00 67 b9 5a cc 5a		        .word nt_and, xt_lshift, z_lshift
+>6713	6c 73 68 69 66 74		        .text "lshift"
+>6719	02 00				nt_plusstore    .byte 2, 00
+>671b	0b 67 ae 5c bd 5c		        .word nt_lshift, xt_plusstore, z_plusstore
+>6721	2b 21				        .text "+!"
+>6723	02 00				nt_c_comma      .byte 2, 00
+>6725	19 67 c3 55 d0 55		        .word nt_plusstore, xt_c_comma, z_c_comma
+>672b	63 2c				        .text "c,"
+>672d	02 00				nt_c_fetch      .byte 2, 00
+>672f	23 67 d1 55 dc 55		        .word nt_c_comma, xt_c_fetch, z_c_fetch
+>6735	63 40				        .text "c@"
+>6737	02 00				nt_c_store      .byte 2, 00
+>6739	2d 67 dd 55 ec 55		        .word nt_c_fetch, xt_c_store, z_c_store
+>673f	63 21				        .text "c!"
+>6741	02 00				nt_two_star     .byte 2, 00
+>6743	37 67 c7 53 ca 53		        .word nt_c_store, xt_two_star, z_two_star
+>6749	32 2a				        .text "2*"
+>674b	01 00				nt_minus        .byte 1, 00
+>674d	41 67 27 53 31 53		        .word nt_two_star, xt_minus, z_minus
+>6753	2d				        .byte '-'
+>6754	01 00				nt_plus         .byte 1, 00
+>6756	4b 67 f7 52 fe 52		        .word nt_minus, xt_plus, z_plus
+>675c	2b				        .byte '+'
+>675d	02 00				nt_one_minus    .byte 2, 00
+>675f	54 67 bb 53 bc 53		        .word nt_plus, xt_one_minus, z_one_minus
+>6765	31 2d				        .text "1-"
+>6767	02 00				nt_one_plus     .byte 2, 00
+>6769	5d 67 bd 53 be 53		        .word nt_one_minus, xt_one_plus, z_one_plus
+>676f	31 2b				        .text "1+"
+>6771	03 00				nt_zero_notequal .byte 3, 00
+>6773	67 67 7e 53 89 53		        .word nt_one_plus, xt_zero_notequal, z_zero_notequal
+>6779	30 3c 3e			        .text "0<>"
+>677c	02 00				nt_zero_more    .byte 2, 00
+>677e	71 67 8a 53 94 53		        .word nt_zero_notequal, xt_zero_more, z_zero_more
+>6784	30 3e				        .text "0>"
+>6786	02 00				nt_zero_less    .byte 2, 00
+>6788	7c 67 72 53 7d 53		        .word nt_zero_more, xt_zero_less, z_zero_less
+>678e	30 3c				        .text "0<"
+>6790	01 00				nt_greater      .byte 1, 00
+>6792	86 67 e6 50 f9 50		        .word nt_zero_less, xt_greater, z_greater
+>6798	3e				        .byte '>'
+>6799	01 00				nt_less         .byte 1, 00
+>679b	90 67 bc 50 cf 50		        .word nt_greater, xt_less, z_less
+>67a1	3c				        .byte '<'
+>67a2	02 00				nt_zero_equal   .byte 2, 00
+>67a4	99 67 66 53 71 53		        .word nt_less, xt_zero_equal, z_zero_equal
+>67aa	30 3d				        .text "0="
+>67ac	02 00				nt_not_equal    .byte 2, 00
+>67ae	a2 67 d0 50 db 50		        .word nt_zero_equal, xt_not_equal, z_not_equal
+>67b4	3c 3e				        .text "<>"
+>67b6	01 00				nt_equal        .byte 1, 00
+>67b8	ac 67 52 53 5d 53		        .word nt_not_equal, xt_equal, z_equal
+>67be	3d				        .byte '='
+>67bf	05 00				nt_false        .byte 5, 00
+>67c1	b6 67 5e 53 65 53		        .word nt_equal, xt_zero, z_zero
+>67c7	66 61 6c 73 65			        .text "false"
+>67cc	04 00				nt_true         .byte 4, 00
+>67ce	bf 67 c0 5e c7 5e		        .word nt_false, xt_true, z_true
+>67d4	74 72 75 65			        .text "true"
+>67d8	07 00				nt_tonumber     .byte 7, 00	; see if actually NC
+>67da	cc 67 26 51 82 51		        .word nt_true, xt_tonumber, z_tonumber
+>67e0	3e 6e 75 6d 62 65 72		        .text ">number"
+>67e7	06 00				nt_number       .byte 6, 00	; see if actually NC
+>67e9	d8 67 86 5b 09 5c		        .word nt_tonumber, xt_number, z_number
+>67ef	6e 75 6d 62 65 72		        .text "number"
+>67f5	01 00				nt_two          .byte 1, 00
+>67f7	e7 67 bf 53 c6 53		        .word nt_number, xt_two, z_two
+>67fd	32				        .byte '2'
+>67fe	01 00				nt_one          .byte 1, 00
+>6800	f5 67 b3 53 ba 53		        .word nt_two, xt_one, z_one
+>6806	31				        .byte '1'
+>6807	01 00				nt_zero         .byte 1, 00
+>6809	fe 67 5e 53 65 53		        .word nt_one, xt_zero, z_zero
+>680f	30				        .byte '0'
+>6810	09 00				nt_find_name    .byte 9, 0
+>6812	07 68 4a 59 a0 59		        .word nt_zero, xt_find_name, z_find_name
+>6818	66 69 6e 64 2d 6e 61 6d		        .text "find-name"
+>6820	65
+>6821	06 00				nt_refill       .byte 6, 0 ; TODO check flags
+>6823	10 68 1d 5d 46 5d		        .word nt_find_name, xt_refill, z_refill
+>6829	72 65 66 69 6c 6c		        .text "refill"
+>682f	0a 00				nt_parse_name   .byte 10, 0
+>6831	21 68 39 5c 9f 5c		        .word nt_refill, xt_parse_name, z_parse_name
+>6837	70 61 72 73 65 2d 6e 61		        .text "parse-name"
+>683f	6d 65
+>6841	09 00				nt_source_id    .byte 9, 00
+>6843	2f 68 82 5e 88 5e		        .word nt_parse_name, xt_source_id, z_source_id
+>6849	73 6f 75 72 63 65 2d 69		        .text "source-id"
+>6851	64
+>6852	01 00				nt_comma        .byte 1, 00
+>6854	41 68 08 52 13 52		        .word nt_source_id, xt_comma, z_comma
+>685a	2c				        .byte ','
+>685b	06 00				nt_accept       .byte 6, 00 ; TODO check flags
+>685d	52 68 80 54 0e 55		        .word nt_comma, xt_accept, z_accept
+>6863	61 63 63 65 70 74		        .text "accept"
+>6869	04 00				nt_keyq         .byte 4, 00
+>686b	5b 68 05 5a 12 5a		        .word nt_accept, xt_keyq, z_keyq
+>6871	6b 65 79 3f			        .text "key?"
+>6875	03 00				nt_key          .byte 3, 00
+>6877	69 68 f5 59 04 5a		        .word nt_keyq, xt_key, z_key
+>687d	6b 65 79			        .text "key"
+>6880	01 00				nt_backslash    .byte 1, 00
+>6882	75 68 f2 52 f6 52		        .word nt_key, xt_backslash, z_backslash
+>6888	5c				        .byte '\'
+>6889	04 00				nt_qdup         .byte 4, 00
+>688b	80 68 89 52 90 52		        .word nt_backslash, xt_qdup, z_qdup
+>6891	3f 64 75 70			        .text "?dup"
+>6895	04 00				nt_tuck         .byte 4, 00
+>6897	89 68 c8 5e d0 5e		        .word nt_qdup, xt_tuck, z_tuck
+>689d	74 75 63 6b			        .text "tuck"
+>68a1	03 00				nt_nip          .byte 3, 00
+>68a3	95 68 83 5b 85 5b		        .word nt_tuck, xt_nip, z_nip
+>68a9	6e 69 70			        .text "nip"
+>68ac	04 00				nt_mrot         .byte 4, 00
+>68ae	a1 68 32 53 3a 53		        .word nt_nip, xt_mrot, z_mrot
+>68b4	2d 72 6f 74			        .text "-rot"
+>68b8	03 00				nt_rot          .byte 3, 00
+>68ba	ac 68 47 5d 4f 5d		        .word nt_mrot, xt_rot, z_rot
+>68c0	72 6f 74			        .text "rot"
+>68c3	05 00				nt_2over        .byte 5, 00
+>68c5	b8 68 ee 53 fa 53		        .word nt_rot, xt_2over, z_2over
+>68cb	32 6f 76 65 72			        .text "2over"
+>68d0	05 00				nt_2swap        .byte 5, 00
+>68d2	c3 68 1a 54 2a 54		        .word nt_2over, xt_2swap, z_2swap
+>68d8	32 73 77 61 70			        .text "2swap"
+>68dd	07 00				nt_execute      .byte 7, 00
+>68df	d0 68 0f 59 19 59		        .word nt_2swap, xt_execute, z_execute
+>68e5	65 78 65 63 75 74 65		        .text "execute"
+>68ec	04 00				nt_here         .byte 4, 00
+>68ee	dd 68 59 5a 5f 5a		        .word nt_execute, xt_here, z_here
+>68f4	68 65 72 65			        .text "here"
+>68f8	05 00				nt_2drop        .byte 5, 00
+>68fa	ec 68 dc 53 e2 53		        .word nt_here, xt_2drop, z_2drop
+>6900	32 64 72 6f 70			        .text "2drop"
+>6905	02 00				nt_rfetch       .byte 2, 0 ; we follow Gforth in making this not CO
+>6907	f8 68 f2 5c fa 5c		        .word nt_2drop, xt_rfetch, z_rfetch
+>690d	72 40				        .text "r@"
+>690f	02 01				nt_fromr        .byte 2, CO    ; NC is special case
+>6911	05 69 fb 5c 02 5d		        .word nt_rfetch, xt_fromr, z_fromr
+>6917	72 3e				        .text "r>"
+>6919	02 01				nt_tor          .byte 2, CO     ; NC is special case
+>691b	0f 69 83 51 8a 51		        .word nt_fromr, xt_tor, z_tor
+>6921	3e 72				        .text ">r"
+>6923	06 00				nt_digitq       .byte 6, 00
+>6925	19 69 b2 57 ed 57		        .word nt_tor, xt_digitq, z_digitq
+>692b	64 69 67 69 74 3f		        .text "digit?"
+>6931	06 00				nt_bounds       .byte 6, 00
+>6933	23 69 9f 55 a7 55		        .word nt_digitq, xt_bounds, z_bounds
+>6939	62 6f 75 6e 64 73		        .text "bounds"
+>693f	04 00				nt_over         .byte 4, 00
+>6941	31 69 19 5c 1f 5c		        .word nt_bounds, xt_over, z_over
+>6947	6f 76 65 72			        .text "over"
+>694b	01 00				nt_fetch        .byte 1, 00
+>694d	3f 69 9d 52 a1 52		        .word nt_over, xt_fetch, z_fetch
+>6953	40				        .text "@"
+>6954	01 00				nt_store        .byte 1, 00
+>6956	4b 69 91 52 9c 52		        .word nt_fetch, xt_store, z_store
+>695c	21				        .text "!"
+>695d	04 00				nt_swap         .byte 4, 00
+>695f	54 69 b0 5e b5 5e		        .word nt_store, xt_swap, z_swap
+>6965	73 77 61 70			        .text "swap"
+>6969	03 00				nt_dup          .byte 3, 00
+>696b	5d 69 ad 58 b1 58		        .word nt_swap, xt_dup, z_dup
+>6971	64 75 70			        .text "dup"
+>6974	04 00				nt_drop         .byte 4, 00
+>6976	69 69 a8 58 ac 58		        .word nt_dup, xt_drop, z_drop
+>697c	64 72 6f 70			        .text "drop"
+
+;******  Return to file: liaraforth.asm
+
+.6980					doconst
+.6980	ca		dex		                dex ;  make room on Data Stack
+.6981	ca		dex		                dex
+.6982	94 00		sty $00,x	                sty $00,x
+.6984	68		pla		                pla ;  get the return address
+.6985	85 1c		sta $1c		                sta tmp1
+.6987	a0 01 00	ldy #$0001	                ldy #$0001
+.698a	b1 1c		lda ($1c),y	                lda (tmp1),y ;  LDA (TMP1),Y
+.698c	a8		tay		                tay
+.698d	60		rts		                rts ;  takes us to original caller
+.698e					dodefer
+.698e	68		pla		                pla ;  this is the address where we find the xt ...
+.698f	1a		inc a		                inc a ;  ... except one byte later
+.6990	85 1c		sta $1c		                sta tmp1
+.6992	b2 1c		lda ($1c)	                lda (tmp1) ;  LDA (TMP1)
+.6994	3a		dec a		                dec a ;  Now we need to move one byte back
+.6995	48		pha		                pha ;  Return new address
+.6996	60		rts		                rts ;  This is actually a jump to the new target
+.6997					defer_error
+.6997	a9 bd 71	lda #$71bd	                lda #es_defer
+.699a	4c 36 6a	jmp $6a36	                jmp error
+.699d					dodoes
+.699d	68		pla		                pla
+.699e	1a		inc a		                inc a
+.699f	85 20		sta $20		                sta tmp3
+.69a1	ca		dex		                dex
+.69a2	ca		dex		                dex
+.69a3	94 00		sty $00,x	                sty $00,x
+.69a5	7a		ply		                ply
+.69a6	c8		iny		                iny
+.69a7	6c 20 00	jmp ($0020)	                jmp (tmp3) ;  JMP (TMP3)
+.69aa					dovar
+.69aa	ca		dex		                dex ;  make room on Data Stack
+.69ab	ca		dex		                dex
+.69ac	94 00		sty $00,x	                sty $00,x
+.69ae	7a		ply		                ply ;  value is now TOS
+.69af	c8		iny		                iny ;  add one because of 65816's address handling
+.69b0	60		rts		                rts ;  takes us to original caller
+.69b1					interpret
+.69b1					interpret_loop
+.69b1	20 39 5c	jsr $5c39	                jsr xt_parse_name ;  ( "string" -- addr u )
+.69b4	98		tya		                tya ;  force flag check
+.69b5	f0 52		beq $6a09	                beq interpret_line_done
+.69b7	20 e3 53	jsr $53e3	                jsr xt_2dup ;  TODO convert this to assembler
+.69ba	20 4a 59	jsr $594a	                jsr xt_find_name ;  ( addr u -- nt | 0 )
+.69bd	98		tya		                tya
+.69be	d0 15		bne $69d5	                bne interpret_got_name_token
+.69c0	20 a8 58	jsr $58a8	                jsr xt_drop ;  TODO convert this to assembler
+.69c3	20 86 5b	jsr $5b86	                jsr xt_number ;  ( addr u -- u | d )
+.69c6	a5 14		lda $14		                lda state
+.69c8	f0 e7		beq $69b1	                beq interpret_loop
+.69ca	f4 ac 5a	pea #$5aac	                pea literal_rt ;  LITERAL runtime
+.69cd	20 15 6a	jsr $6a15	                jsr cmpl_subroutine
+.69d0	20 08 52	jsr $5208	                jsr xt_comma
+.69d3	80 dc		bra $69b1	                bra interpret_loop
+.69d5					interpret_got_name_token
+.69d5	e8		inx		                inx
+.69d6	e8		inx		                inx
+.69d7	e8		inx		                inx
+.69d8	e8		inx		                inx
+.69d9	84 1a		sty $1a		                sty tmpbranch
+.69db	c8		iny		                iny
+.69dc	c8		iny		                iny
+.69dd	c8		iny		                iny
+.69de	c8		iny		                iny
+.69df	b9 00 00	lda $0000,y	                lda $0000,y ;  LDA $0000,Y
+.69e2	a8		tay		                tay ;  xt is TOS
+.69e3	a5 14		lda $14		                lda state
+.69e5	d0 14		bne $69fb	                bne interpret_compile
+.69e7	b2 1a		lda ($1a)	                lda (tmpbranch)
+.69e9	eb		xba		                xba ;  flags are MSB
+.69ea	29 01 00	and #$0001	                and #CO ;  mask everything but Compile Only bit
+.69ed	f0 06		beq $69f5	                beq interpret_interpret
+.69ef	a9 9c 71	lda #$719c	                lda #es_componly
+.69f2	4c 36 6a	jmp $6a36	                jmp error
+.69f5					interpret_interpret
+.69f5	20 0f 59	jsr $590f	                jsr xt_execute
+.69f8	4c b1 69	jmp $69b1	                jmp interpret_loop
+.69fb					interpret_compile
+.69fb	b2 1a		lda ($1a)	                lda (tmpbranch)
+.69fd	eb		xba		                xba ;  flags are MSB
+.69fe	29 04 00	and #$0004	                and #IM ;  Mask all but IM bit
+.6a01	d0 f2		bne $69f5	                bne interpret_interpret ;  IMMEDIATE word, execute right now
+.6a03	20 4f 56	jsr $564f	                jsr xt_compilecomma
+.6a06	4c b1 69	jmp $69b1	                jmp interpret_loop
+.6a09					interpret_line_done
+.6a09	b4 02		ldy $02,x	                ldy $02,x
+.6a0b	e8		inx		                inx
+.6a0c	e8		inx		                inx
+.6a0d	e8		inx		                inx
+.6a0e	e8		inx		                inx
+.6a0f	60		rts		                rts
+.6a10					cmpl_word
+.6a10	a9 00 00	lda #$0000	                lda #$0000 ;  zero value as a flag, compile word only
+.6a13	80 08		bra $6a1d	                bra cmpl_common
+.6a15					cmpl_subroutine
+.6a15	a9 20 00	lda #$0020	                lda #$0020 ;  compile "JSR" opcode first
+.6a18	80 03		bra $6a1d	                bra cmpl_common
+.6a1a					cmpl_jump
+.6a1a	a9 4c 00	lda #$004c	                lda #$004c ;  compile "JMP", fall through to cmpl_common
+.6a1d					cmpl_common
+.6a1d	84 24		sty $24		                sty tmptos
+.6a1f	a8		tay		                tay ;  force flag check
+.6a20	f0 08		beq $6a2a	                beq cmpl_body ;  came in through cmpl_word, just compile body
+.6a22	e2 20		sep #$20	                SEP #$20        ; set A short
+.6a24	92 00		sta ($00)	                sta (cp) ;  STA (CP)
+.6a26	c2 20		rep #$20	                REP #$20        ; set A long
+.6a28	e6 00		inc $00		                inc cp ;  fall through to cmpl_body
+.6a2a					cmpl_body
+.6a2a	7a		ply		                ply ;  the return address we'll need later
+.6a2b	68		pla		                pla ;  next value on stack is the word to compile
+.6a2c	92 00		sta ($00)	                sta (cp) ;  this is a quicker version of , ("comma")
+.6a2e	e6 00		inc $00		                inc cp
+.6a30	e6 00		inc $00		                inc cp
+.6a32	5a		phy		                phy ;  make sure we can get back home
+.6a33	a4 24		ldy $24		                ldy tmptos ;  restore Data Stack
+.6a35	60		rts		                rts
+.6a36					error
+.6a36	20 3c 6a	jsr $6a3c	                jsr print_string
+.6a39	4c 75 50	jmp $5075	                jmp xt_abort
+.6a3c					print_string
+.6a3c	da		phx		                phx
+.6a3d	aa		tax		                tax ;  x16 contains address of string
+.6a3e					-
+.6a3e	e2 20		sep #$20	                SEP #$20        ; set A short
+.6a40	bd 00 00	lda $0000,x	                lda @w $0000,x ;  LDA $0000,X - @w to conform with tinkerers asm
+.6a43	f0 06		beq $6a4b	                beq print_string_done
+.6a45	20 b7 58	jsr $58b7	                jsr emit_a
+.6a48	e8		inx		                inx
+.6a49	80 f3		bra $6a3e	                bra -
+.6a4b					print_string_done
+.6a4b	a9 0a		lda #$0a	                lda #AscLF ;  should be CR on some systems
+.6a4d	20 b7 58	jsr $58b7	                jsr emit_a
+.6a50	c2 20		rep #$20	                REP #$20        ; set A long
+.6a52	fa		plx		                plx
+.6a53	60		rts		                rts
+.6a54					print_u
+.6a54	ca		dex		                dex ;  0
+.6a55	ca		dex		                dex
+.6a56	94 00		sty $00,x	                sty $00,x
+.6a58	a0 00 00	ldy #$0000	                ldy #$0000
+.6a5b	20 20 5c	jsr $5c20	                jsr xt_pad ;  <#
+.6a5e	84 18		sty $18		                sty tohold
+.6a60	b4 00		ldy $00,x	                ldy $00,x
+.6a62	e8		inx		                inx
+.6a63	e8		inx		                inx
+.6a64	20 79 52	jsr $5279	                jsr xt_hashs ;  #S
+.6a67	20 6a 52	jsr $526a	                jsr xt_numbermore ;  #>
+.6a6a	20 d1 5e	jsr $5ed1	                jsr xt_type
+.6a6d	60		rts		                rts
+.6a6e					byte_to_ascii
+.6a6e	48		pha		                pha
+.6a6f	4a		lsr a		                lsr a
+.6a70	4a		lsr a		                lsr a
+.6a71	4a		lsr a		                lsr a
+.6a72	4a		lsr a		                lsr a
+.6a73	20 77 6a	jsr $6a77	                jsr nibble_to_ascii
+.6a76	68		pla		                pla
+.6a77					nibble_to_ascii
+.6a77	29 0f 00	and #$000f	                and #$000f
+.6a7a	09 30 00	ora #$0030	                ora #'0'
+.6a7d	c9 3a 00	cmp #$003a	                cmp #$003a ;  '9' + 1
+.6a80	90 03		bcc $6a85	                bcc +
+.6a82	69 06 00	adc #$0006	                adc #$0006
+.6a85					+
+.6a85	20 b7 58	jsr $58b7	                jsr emit_a
+.6a88	60		rts		                rts
+.6a89					hi_start
+>6a89	3a 20 28 20 5b 63 68 61		        .text ": ( [char] ) parse 2drop ; immediate "
+>6a91	72 5d 20 29 20 70 61 72 73 65 20 32 64 72 6f 70
+>6aa1	20 3b 20 69 6d 6d 65 64 69 61 74 65 20
+>6aae	3a 20 2e 28 20 5b 63 68		        .text ": .( [char] ) parse type ; immediate "
+>6ab6	61 72 5d 20 29 20 70 61 72 73 65 20 74 79 70 65
+>6ac6	20 3b 20 69 6d 6d 65 64 69 61 74 65 20
+>6ad3	3a 20 69 66 20 70 6f 73		        .text ": if postpone 0branch here 0 , ; immediate compile-only "
+>6adb	74 70 6f 6e 65 20 30 62 72 61 6e 63 68 20 68 65
+>6aeb	72 65 20 30 20 2c 20 3b 20 69 6d 6d 65 64 69 61
+>6afb	74 65 20 63 6f 6d 70 69 6c 65 2d 6f 6e 6c 79 20
+>6b0b	3a 20 74 68 65 6e 20 68		        .text ": then here swap ! ; immediate compile-only "
+>6b13	65 72 65 20 73 77 61 70 20 21 20 3b 20 69 6d 6d
+>6b23	65 64 69 61 74 65 20 63 6f 6d 70 69 6c 65 2d 6f
+>6b33	6e 6c 79 20
+>6b37	3a 20 65 6c 73 65 20 70		        .text ": else postpone branch here 0 , here rot ! ; immediate compile-only "
+>6b3f	6f 73 74 70 6f 6e 65 20 62 72 61 6e 63 68 20 68
+>6b4f	65 72 65 20 30 20 2c 20 68 65 72 65 20 72 6f 74
+>6b5f	20 21 20 3b 20 69 6d 6d 65 64 69 61 74 65 20 63
+>6b6f	6f 6d 70 69 6c 65 2d 6f 6e 6c 79 20
+>6b7b	3a 20 72 65 70 65 61 74		        .text ": repeat postpone again here swap ! ; immediate compile-only "
+>6b83	20 70 6f 73 74 70 6f 6e 65 20 61 67 61 69 6e 20
+>6b93	68 65 72 65 20 73 77 61 70 20 21 20 3b 20 69 6d
+>6ba3	6d 65 64 69 61 74 65 20 63 6f 6d 70 69 6c 65 2d
+>6bb3	6f 6e 6c 79 20
+>6bb8	3a 20 75 6e 74 69 6c 20		        .text ": until postpone 0branch , ; immediate compile-only "
+>6bc0	70 6f 73 74 70 6f 6e 65 20 30 62 72 61 6e 63 68
+>6bd0	20 2c 20 3b 20 69 6d 6d 65 64 69 61 74 65 20 63
+>6be0	6f 6d 70 69 6c 65 2d 6f 6e 6c 79 20
+>6bec	3a 20 77 68 69 6c 65 20		        .text ": while postpone 0branch here 0 , swap ; immediate compile-only "
+>6bf4	70 6f 73 74 70 6f 6e 65 20 30 62 72 61 6e 63 68
+>6c04	20 68 65 72 65 20 30 20 2c 20 73 77 61 70 20 3b
+>6c14	20 69 6d 6d 65 64 69 61 74 65 20 63 6f 6d 70 69
+>6c24	6c 65 2d 6f 6e 6c 79 20
+>6c2c	3a 20 64 65 66 65 72 21		        .text ": defer! >body ! ; "
+>6c34	20 3e 62 6f 64 79 20 21 20 3b 20
+>6c3f	3a 20 64 65 66 65 72 40		        .text ": defer@ >body @ ; "
+>6c47	20 3e 62 6f 64 79 20 40 20 3b 20
+>6c52	3a 20 69 73 20 73 74 61		        .text ": is state @ if postpone ['] postpone defer! else ' defer! then ; immediate "
+>6c5a	74 65 20 40 20 69 66 20 70 6f 73 74 70 6f 6e 65
+>6c6a	20 5b 27 5d 20 70 6f 73 74 70 6f 6e 65 20 64 65
+>6c7a	66 65 72 21 20 65 6c 73 65 20 27 20 64 65 66 65
+>6c8a	72 21 20 74 68 65 6e 20 3b 20 69 6d 6d 65 64 69
+>6c9a	61 74 65 20
+>6c9e	3a 20 61 63 74 69 6f 6e		        .text ": action-of state @ if postpone ['] postpone defer@ else ' defer@ then ; immediate "
+>6ca6	2d 6f 66 20 73 74 61 74 65 20 40 20 69 66 20 70
+>6cb6	6f 73 74 70 6f 6e 65 20 5b 27 5d 20 70 6f 73 74
+>6cc6	70 6f 6e 65 20 64 65 66 65 72 40 20 65 6c 73 65
+>6cd6	20 27 20 64 65 66 65 72 40 20 74 68 65 6e 20 3b
+>6ce6	20 69 6d 6d 65 64 69 61 74 65 20
+>6cf1	3a 20 2f 20 3e 72 20 73		        .text ": / >r s>d r> sm/rem swap drop ; "
+>6cf9	3e 64 20 72 3e 20 73 6d 2f 72 65 6d 20 73 77 61
+>6d09	70 20 64 72 6f 70 20 3b 20
+>6d12	3a 20 2f 6d 6f 64 20 3e		        .text ": /mod >r s>d r> sm/rem ; "
+>6d1a	72 20 73 3e 64 20 72 3e 20 73 6d 2f 72 65 6d 20
+>6d2a	3b 20
+>6d2c	3a 20 6d 6f 64 20 2f 6d		        .text ": mod /mod drop ; "
+>6d34	6f 64 20 64 72 6f 70 20 3b 20
+>6d3e	3a 20 2a 2f 20 3e 72 20		        .text ": */ >r m* r> sm/rem swap drop ; "
+>6d46	6d 2a 20 72 3e 20 73 6d 2f 72 65 6d 20 73 77 61
+>6d56	70 20 64 72 6f 70 20 3b 20
+>6d5f	3a 20 2a 2f 6d 6f 64 20		        .text ": */mod >r m* r> sm/rem ; "
+>6d67	3e 72 20 6d 2a 20 72 3e 20 73 6d 2f 72 65 6d 20
+>6d77	3b 20
+>6d79	3a 20 75 2e 72 20 3e 72		        .text ": u.r >r 0 <# #s #> r> over - spaces type ; "
+>6d81	20 30 20 3c 23 20 23 73 20 23 3e 20 72 3e 20 6f
+>6d91	76 65 72 20 2d 20 73 70 61 63 65 73 20 74 79 70
+>6da1	65 20 3b 20
+>6da5	3a 20 2e 72 20 3e 72 20		        .text ": .r >r dup abs 0 <# #s rot sign #> r> over - spaces type ; "
+>6dad	64 75 70 20 61 62 73 20 30 20 3c 23 20 23 73 20
+>6dbd	72 6f 74 20 73 69 67 6e 20 23 3e 20 72 3e 20 6f
+>6dcd	76 65 72 20 2d 20 73 70 61 63 65 73 20 74 79 70
+>6ddd	65 20 3b 20
+>6de1	3a 20 75 64 2e 20 3c 23		        .text ": ud. <# #s #> type space ; "
+>6de9	20 23 73 20 23 3e 20 74 79 70 65 20 73 70 61 63
+>6df9	65 20 3b 20
+>6dfd	3a 20 75 64 2e 72 20 3e		        .text ": ud.r >r <# #s #> r> over - spaces type ; "
+>6e05	72 20 3c 23 20 23 73 20 23 3e 20 72 3e 20 6f 76
+>6e15	65 72 20 2d 20 73 70 61 63 65 73 20 74 79 70 65
+>6e25	20 3b 20
+>6e28	3a 20 64 2e 20 74 75 63		        .text ": d. tuck dabs <# #s rot sign #> type space ; "
+>6e30	6b 20 64 61 62 73 20 3c 23 20 23 73 20 72 6f 74
+>6e40	20 73 69 67 6e 20 23 3e 20 74 79 70 65 20 73 70
+>6e50	61 63 65 20 3b 20
+>6e56	3a 20 64 2e 72 20 3e 72		        .text ": d.r >r tuck dabs <# #s rot sign #> r> over - spaces type ; "
+>6e5e	20 74 75 63 6b 20 64 61 62 73 20 3c 23 20 23 73
+>6e6e	20 72 6f 74 20 73 69 67 6e 20 23 3e 20 72 3e 20
+>6e7e	6f 76 65 72 20 2d 20 73 70 61 63 65 73 20 74 79
+>6e8e	70 65 20 3b 20
+>6e93	3a 20 77 69 74 68 69 6e		        .text ": within ( n1 n2 n3 -- f ) rot tuck > -rot > invert and ; "
+>6e9b	20 28 20 6e 31 20 6e 32 20 6e 33 20 2d 2d 20 66
+>6eab	20 29 20 72 6f 74 20 74 75 63 6b 20 3e 20 2d 72
+>6ebb	6f 74 20 3e 20 69 6e 76 65 72 74 20 61 6e 64 20
+>6ecb	3b 20
+>6ecd	3a 20 64 75 6d 70 20 28		        .text ": dump ( addr u -- ) bounds ?do cr i 4 u.r space "
+>6ed5	20 61 64 64 72 20 75 20 2d 2d 20 29 20 62 6f 75
+>6ee5	6e 64 73 20 3f 64 6f 20 63 72 20 69 20 34 20 75
+>6ef5	2e 72 20 73 70 61 63 65 20
+>6efe	31 36 20 30 20 64 6f 20		        .text "16 0 do i j + c@ 0 <# # #s #> type space loop 16 +loop ; "
+>6f06	69 20 6a 20 2b 20 63 40 20 30 20 3c 23 20 23 20
+>6f16	23 73 20 23 3e 20 74 79 70 65 20 73 70 61 63 65
+>6f26	20 6c 6f 6f 70 20 31 36 20 2b 6c 6f 6f 70 20 3b
+>6f36	20
+>6f37	3a 20 73 65 65 20 70 61		        .text ": see parse-name find-name dup 0= abort", 34, " No such name", 34, " "
+>6f3f	72 73 65 2d 6e 61 6d 65 20 66 69 6e 64 2d 6e 61
+>6f4f	6d 65 20 64 75 70 20 30 3d 20 61 62 6f 72 74 22
+>6f5f	20 4e 6f 20 73 75 63 68 20 6e 61 6d 65 22 20
+>6f6e	62 61 73 65 20 40 20 3e		        .text "base @ >r hex dup cr space .", 34, " nt: ", 34, " . "
+>6f76	72 20 68 65 78 20 64 75 70 20 63 72 20 73 70 61
+>6f86	63 65 20 2e 22 20 6e 74 3a 20 22 20 2e 20
+>6f94	64 75 70 20 34 20 2b 20		        .text "dup 4 + @ space .", 34, " xt: ", 34, " . "
+>6f9c	40 20 73 70 61 63 65 20 2e 22 20 78 74 3a 20 22
+>6fac	20 2e 20
+>6faf	64 75 70 20 31 2b 20 63		        .text "dup 1+ c@ 1 and if space .", 34, " CO", 34, " then "
+>6fb7	40 20 31 20 61 6e 64 20 69 66 20 73 70 61 63 65
+>6fc7	20 2e 22 20 43 4f 22 20 74 68 65 6e 20
+>6fd4	64 75 70 20 31 2b 20 63		        .text "dup 1+ c@ 2 and if space .", 34, " AN", 34, " then "
+>6fdc	40 20 32 20 61 6e 64 20 69 66 20 73 70 61 63 65
+>6fec	20 2e 22 20 41 4e 22 20 74 68 65 6e 20
+>6ff9	64 75 70 20 31 2b 20 63		        .text "dup 1+ c@ 4 and if space .", 34, " IM", 34, " then "
+>7001	40 20 34 20 61 6e 64 20 69 66 20 73 70 61 63 65
+>7011	20 2e 22 20 49 4d 22 20 74 68 65 6e 20
+>701e	64 75 70 20 31 2b 20 63		        .text "dup 1+ c@ 8 and if space .", 34, " NN", 34, " then "
+>7026	40 20 38 20 61 6e 64 20 69 66 20 73 70 61 63 65
+>7036	20 2e 22 20 4e 4e 22 20 74 68 65 6e 20
+>7043	64 75 70 20 63 72 20 73		        .text "dup cr space .", 34, " size (decimal): ", 34, " decimal wordsize dup . "
+>704b	70 61 63 65 20 2e 22 20 73 69 7a 65 20 28 64 65
+>705b	63 69 6d 61 6c 29 3a 20 22 20 64 65 63 69 6d 61
+>706b	6c 20 77 6f 72 64 73 69 7a 65 20 64 75 70 20 2e
+>707b	20
+>707c	73 77 61 70 20 6e 61 6d		        .text "swap name>int swap hex cr space dump r> base ! ; "
+>7084	65 3e 69 6e 74 20 73 77 61 70 20 68 65 78 20 63
+>7094	72 20 73 70 61 63 65 20 64 75 6d 70 20 72 3e 20
+>70a4	62 61 73 65 20 21 20 3b 20
+
+;******  Processing file: user.asm
+
+
+;******  Return to file: liaraforth.asm
+
+>70ad	2e 28 20 4c 69 61 72 61		        .text ".( Liara Forth for the W65C265SXB )"
+>70b5	20 46 6f 72 74 68 20 66 6f 72 20 74 68 65 20 57
+>70c5	36 35 43 32 36 35 53 58 42 20 29
+>70d0	63 72 20 2e 28 20 56 65		        .text "cr .( Version ALPHA 18. September 2017)"
+>70d8	72 73 69 6f 6e 20 41 4c 50 48 41 20 31 38 2e 20
+>70e8	53 65 70 74 65 6d 62 65 72 20 32 30 31 37 29
+>70f7	63 72 20 2e 28 20 53 63		        .text "cr .( Scot W. Stevenson <scot.stevenson@gmail.com>)"
+>70ff	6f 74 20 57 2e 20 53 74 65 76 65 6e 73 6f 6e 20
+>710f	3c 73 63 6f 74 2e 73 74 65 76 65 6e 73 6f 6e 40
+>711f	67 6d 61 69 6c 2e 63 6f 6d 3e 29
+>712a	63 72 20 2e 28 20 4c 69		        .text "cr .( Liara Forth comes with absolutely NO WARRANTY)"
+>7132	61 72 61 20 46 6f 72 74 68 20 63 6f 6d 65 73 20
+>7142	77 69 74 68 20 61 62 73 6f 6c 75 74 65 6c 79 20
+>7152	4e 4f 20 57 41 52 52 41 4e 54 59 29
+>715e	63 72 20 2e 28 20 54 79		        .text "cr .( Type 'bye' to exit) cr"
+>7166	70 65 20 27 62 79 65 27 20 74 6f 20 65 78 69 74
+>7176	29 20 63 72
+.717a					hi_end
+
+;******  Processing file: strings.asm
+
+>717a	20 6f 6b 00			s_ok            .text " ok", 0             ; note space at beginning
+>717e	20 63 6f 6d 70 69 6c 65		s_compiled      .text " compiled", 0
+>7186	64 00
+>7188	41 4c 4c 4f 54 20 6f 75		es_allot        .text "ALLOT out of bounds", 0
+>7190	74 20 6f 66 20 62 6f 75 6e 64 73 00
+>719c	49 6e 74 65 72 70 72 65		es_componly     .text "Interpreting a compile-only word", 0
+>71a4	74 69 6e 67 20 61 20 63 6f 6d 70 69 6c 65 2d 6f
+>71b4	6e 6c 79 20 77 6f 72 64 00
+>71bd	44 45 46 45 52 65 64 20		es_defer        .text "DEFERed word not defined yet", 0
+>71c5	77 6f 72 64 20 6e 6f 74 20 64 65 66 69 6e 65 64
+>71d5	20 79 65 74 00
+>71da	44 69 76 69 73 69 6f 6e		es_divzero      .text "Division by zero", 0
+>71e2	20 62 79 20 7a 65 72 6f 00
+>71eb	3e 3e 3e 45 72 72 6f 72		es_error        .text ">>>Error<<<", 0
+>71f3	3c 3c 3c 00
+>71f7	4e 6f 74 20 69 6e 20 69		es_intonly      .text "Not in interpret mode", 0
+>71ff	6e 74 65 72 70 72 65 74 20 6d 6f 64 65 00
+>720d	50 61 72 73 69 6e 67 20		es_noname       .text "Parsing failure", 0
+>7215	66 61 69 6c 75 72 65 00
+>721d	44 69 67 69 74 20 6c 61		es_radix        .text "Digit larger than base", 0
+>7225	72 67 65 72 20 74 68 61 6e 20 62 61 73 65 00
+>7234	51 55 49 54 20 63 6f 75		es_refill1      .text "QUIT could not get input (REFILL returned -1)", 0
+>723c	6c 64 20 6e 6f 74 20 67 65 74 20 69 6e 70 75 74
+>724c	20 28 52 45 46 49 4c 4c 20 72 65 74 75 72 6e 65
+>725c	64 20 2d 31 29 00
+>7262	49 6c 6c 65 67 61 6c 20		es_refill2      .text "Illegal SOURCE-ID during REFILL", 0
+>726a	53 4f 55 52 43 45 2d 49 44 20 64 75 72 69 6e 67
+>727a	20 52 45 46 49 4c 4c 00
+>7282	41 6c 72 65 61 64 79 20		es_state        .text "Already in compile mode", 0
+>728a	69 6e 20 63 6f 6d 70 69 6c 65 20 6d 6f 64 65 00
+>729a	53 74 61 63 6b 20 75 6e		es_underflow    .text "Stack underflow", 0
+>72a2	64 65 72 66 6c 6f 77 00
+>72aa	55 6e 64 65 66 69 6e 65		es_syntax       .text "Undefined word", 0
+>72b2	64 20 77 6f 72 64 00
+>72b9	1b 5b 32 4a 00			vt100_page      .text AscESC, "[2J", 0       ; clear screen
+>72be	1b 5b 48 00			vt100_home      .text AscESC, "[H", 0        ; cursor home
+>72c2	28 70 72 65 76 69 6f 75		tests_prev_cmd  .text "(previous command)", 0
+>72ca	73 20 63 6f 6d 6d 61 6e 64 29 00
+>72d5	28 6e 65 78 74 20 63 6f		tests_next_cmd  .text "(next command)", 0
+>72dd	6d 6d 61 6e 64 29 00
+>72e4	30 31 32 33 34 35 36 37		abc_str_lower   .text "0123456789abcdefghijklmnopqrstuvwyz"
+>72ec	38 39 61 62 63 64 65 66 67 68 69 6a 6b 6c 6d 6e
+>72fc	6f 70 71 72 73 74 75 76 77 79 7a
+>7307	30 31 32 33 34 35 36 37		abc_str_upper   .text "0123456789ABCDEFGHIJKLMNOPQRSTUVWYZ"
+>730f	38 39 41 42 43 44 45 46 47 48 49 4a 4b 4c 4d 4e
+>731f	4f 50 51 52 53 54 55 56 57 59 5a
+
+;******  Return to file: liaraforth.asm
+
+
+;******  End of listing
