@@ -1,4 +1,4 @@
-# Liara Forth, an "initial" ANSI(ish) Forth for the W65C265SXB (65816 CPU)
+# 64tass port of Liara Forth, an "initial" ANSI(ish) Forth for the W65C265SXB (65816 CPU)
 
 ## notes about 64tass version
 
@@ -6,6 +6,8 @@ This is a conversion to [64tass assembler](http://tass64.sourceforge.net/) forma
 created during work on Liara port to [C256 Foenix platform](https://c256foenix.com/).
 
 At this moment code is able to run in - not released yet - my go65c816 emulator:
+
+Liara Forth was created by [Scot W. Stevenson](https://github.com/scotws/LiaraForth).
 
 ![liara in go65c816](https://raw.githubusercontent.com/aniou/LiaraForth/64tass/images/go65c816-with-liara.png)
 
