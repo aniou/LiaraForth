@@ -1,5 +1,16 @@
 # Liara Forth, an "initial" ANSI(ish) Forth for the W65C265SXB (65816 CPU)
 
+## notes about 64tass version
+
+This is a conversion to [64tass assembler](http://tass64.sourceforge.net/) format,
+created during work on Liara port to [C256 Foenix platform](https://c256foenix.com/).
+
+At this moment code is able to run in - not released yet - my go65c816 emulator:
+
+![liara in go65c816](https://raw.githubusercontent.com/aniou/LiaraForth/64tass/images/go65c816-with-liara.png)
+
+## original README
+
 Liara Forth is an ANSI-orientated Forth for the W65C265SXB ("265SXB")
 single-board computer that will work with out of the box as a "first Forth".
 
@@ -16,3 +27,4 @@ always, at your own risk. There is further information docs/MANUAL.md .
 
 There is a discussion thread for Liara Forth [at
 6502.org](http://forum.6502.org/viewtopic.php?f=9&t=3649).
+
