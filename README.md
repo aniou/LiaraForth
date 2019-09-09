@@ -9,7 +9,7 @@ At this moment code is able to run in - not released yet - my go65c816 emulator:
 
 Liara Forth was created by [Scot W. Stevenson](https://github.com/scotws/LiaraForth).
 
-![liara in go65c816](https://raw.githubusercontent.com/aniou/LiaraForth/64tass/images/go65c816-with-liara.png)
+![liara in go65c816](https://asciinema.org/a/lEH7boZq2BEuQB7deRrtC5giX.png)
 
 ## original README
 
