@@ -5,7 +5,7 @@
 This is a conversion to [64tass assembler](http://tass64.sourceforge.net/) format,
 created during work on Liara port to [C256 Foenix platform](https://c256foenix.com/).
 
-At this moment code is able to run in - not released yet - my go65c816 emulator:
+At this moment code is able to run in my [go65c816 emulator](https://github.com/aniou/go65c816):
 
 Liara Forth was created by [Scot W. Stevenson](https://github.com/scotws/LiaraForth).
 
